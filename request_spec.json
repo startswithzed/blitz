@@ -1,0 +1,56 @@
+[
+  {
+    "verb": "GET",
+    "url": "http://localhost:3333",
+    "headers": {
+      "dummyHeaderKey": "DummyHeaderValue",
+      "dummyHeaderKey1": "DummyHeaderValue1"
+    }
+  },
+  {
+    "verb": "POST",
+    "url": "http://localhost:3333",
+    "headers": {
+      "Content-Type": "application/json",
+      "dummyHeaderKey": "DummyHeaderValue",
+      "dummyHeaderKey1": "DummyHeaderValue1"
+    },
+    "body": {
+      "key" : "value",
+      "key1": "value1",
+      "key2": {
+        "k": "v",
+        "k1": "v1"
+      }
+    }
+  },
+  {
+    "verb": "PUT",
+    "url": "http://localhost:3333",
+    "headers": {
+      "Content-Type": "application/json",
+      "dummyHeaderKey": "DummyHeaderValue",
+      "dummyHeaderKey1": "DummyHeaderValue1"
+    },
+    "contentType": "application/json",
+    "body": [
+      {
+        "k": "v",
+        "k1": "v1"
+      },
+      {
+        "k": "v",
+        "k1": "v1"
+      }
+    ]
+  },
+  {
+    "verb": "DELETE",
+    "url": "http://localhost:3333",
+    "headers": {
+      "Content-Type": "application/json",
+      "dummyHeaderKey": "DummyHeaderValue",
+      "dummyHeaderKey1": "DummyHeaderValue1"
+    }
+  }
+]
