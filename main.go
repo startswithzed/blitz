@@ -132,7 +132,7 @@ func main() {
 
 	//validateRequests(requests)
 
-	timeout := 10 * time.Second
+	timeout := 5 * time.Second
 	timeoutChan := time.After(timeout)
 
 	numWorkers := 5
@@ -140,7 +140,8 @@ func main() {
 		go startClient(requests, timeoutChan)
 	}
 
-	// TODO: use wait groups to wait for goroutine execution instead of sleeping
-	// Sleep to allow the workers to execute
-	time.Sleep(11 * time.Second)
+	select {
+	case <-timeoutChan:
+		fmt.Println("INFO:  Test duration completed. Ending test")
+	}
 }
