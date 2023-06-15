@@ -11,20 +11,17 @@ import (
 	"time"
 )
 
-type Verb string
-
-const (
-	GET = Verb(iota)
-	POST
-	PUT
-	DELETE
-)
-
 type Request struct {
 	Verb    string            `json:"verb"`
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers"`
 	Body    interface{}       `json:"body"`
+}
+
+type Response struct {
+	StatusCode   int
+	ResponseTime int64
+	Timestamp    int64
 }
 
 func validateRequests(requests []Request) {
@@ -37,7 +34,7 @@ func validateRequests(requests []Request) {
 	// TODO: handle body parsing errors and replace body with byte stream
 }
 
-func sendRequest(request *Request) (int, int64, error) {
+func sendRequest(request *Request) (Response, error) {
 	client := &http.Client{}
 
 	var req *http.Request
@@ -72,18 +69,42 @@ func sendRequest(request *Request) (int, int64, error) {
 	}
 
 	if err != nil {
-		return -1, -1, err
+		return Response{}, err
 	}
 
 	startTime = time.Now()
 	resp, err = client.Do(req)
 	if err != nil {
-		return -1, -1, err
+		return Response{}, err
 	}
 
 	responseTime := time.Since(startTime)
 
-	return resp.StatusCode, responseTime.Milliseconds(), nil
+	return Response{
+		StatusCode:   resp.StatusCode,
+		ResponseTime: responseTime.Milliseconds(),
+		Timestamp:    startTime.UnixNano(),
+	}, nil
+}
+
+func startClient(requests []Request, timeoutChan <-chan time.Time) {
+	fmt.Println("INFO:  Client started")
+	defer fmt.Println("INFO:  Shutting Down Goroutine")
+	for {
+		select {
+		case <-timeoutChan:
+			fmt.Printf("INFO:  Timeout occurred\n")
+		default:
+			rand.Seed(time.Now().UnixNano())
+			request := &requests[rand.Intn(len(requests))]
+			resp, err := sendRequest(request)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			fmt.Println(resp.StatusCode, resp.ResponseTime)
+		}
+	}
 }
 
 func main() {
@@ -111,14 +132,15 @@ func main() {
 
 	//validateRequests(requests)
 
-	for i := 0; i < 20; i++ {
-		rand.Seed(time.Now().UnixNano())
-		request := &requests[rand.Intn(len(requests))]
-		status, duration, err := sendRequest(request)
-		if err != nil {
-			fmt.Println(err)
-		}
+	timeout := 10 * time.Second
+	timeoutChan := time.After(timeout)
 
-		fmt.Println(status, duration)
+	numWorkers := 5
+	for i := 0; i < numWorkers; i++ {
+		go startClient(requests, timeoutChan)
 	}
+
+	// TODO: use wait groups to wait for goroutine execution instead of sleeping
+	// Sleep to allow the workers to execute
+	time.Sleep(11 * time.Second)
 }
