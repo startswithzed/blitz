@@ -87,7 +87,7 @@ func sendRequest(request *Request) (Response, error) {
 	}, nil
 }
 
-func startClient(requests []Request, timeoutChan <-chan time.Time) {
+func startClient(requests []*Request, timeoutChan <-chan time.Time) {
 	fmt.Println("INFO:  Client started")
 	defer fmt.Println("INFO:  Shutting Down Goroutine")
 	for {
@@ -96,7 +96,7 @@ func startClient(requests []Request, timeoutChan <-chan time.Time) {
 			fmt.Printf("INFO:  Timeout occurred\n")
 		default:
 			rand.Seed(time.Now().UnixNano())
-			request := &requests[rand.Intn(len(requests))]
+			request := requests[rand.Intn(len(requests))]
 			resp, err := sendRequest(request)
 			if err != nil {
 				fmt.Println(err)
@@ -123,7 +123,7 @@ func main() {
 		fmt.Println(err)
 	}
 
-	var requests []Request
+	var requests []*Request
 
 	err = json.Unmarshal(bytes, &requests)
 	if err != nil {
