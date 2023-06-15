@@ -1,5 +1,7 @@
 package main
 
+// TODO: Implement graceful shutdown by handling interrupt signals and using context and wait groups
+
 import (
 	"bytes"
 	"encoding/json"
@@ -87,23 +89,43 @@ func sendRequest(request *Request) (Response, error) {
 	}, nil
 }
 
-func startClient(requests []*Request, timeoutChan <-chan time.Time) {
-	fmt.Println("INFO:  Client started")
-	defer fmt.Println("INFO:  Shutting Down Goroutine")
-	for {
-		select {
-		case <-timeoutChan:
-			fmt.Printf("INFO:  Timeout occurred\n")
-		default:
-			rand.Seed(time.Now().UnixNano())
-			request := requests[rand.Intn(len(requests))]
-			resp, err := sendRequest(request)
-			if err != nil {
-				fmt.Println(err)
-			}
+func ProcessResponse(response Response) {
+	fmt.Println("INFO:  ", response.Timestamp, response.StatusCode, response.ResponseTime)
+}
 
-			fmt.Println(resp.StatusCode, resp.ResponseTime)
-		}
+func Funnel(sources ...chan Response) <-chan Response {
+	output := make(chan Response) // TODO: Close this channel and goroutines using wg
+
+	for _, source := range sources {
+		go func(c <-chan Response) {
+			for {
+				select {
+				case resp, ok := <-c:
+					if !ok {
+						return
+					}
+					output <- resp
+				}
+			}
+		}(source)
+	}
+
+	return output
+}
+
+func Split(source <-chan Response, numWorkers int) {
+	for i := 0; i < numWorkers; i++ {
+		go func() {
+			for {
+				select {
+				case resp, ok := <-source:
+					if !ok {
+						return
+					}
+					ProcessResponse(resp)
+				}
+			}
+		}()
 	}
 }
 
@@ -132,13 +154,41 @@ func main() {
 
 	//validateRequests(requests)
 
-	timeout := 5 * time.Second
+	timeout := 10 * time.Second
 	timeoutChan := time.After(timeout)
 
+	numClients := 10
 	numWorkers := 5
-	for i := 0; i < numWorkers; i++ {
-		go startClient(requests, timeoutChan)
+
+	var sources []chan Response
+
+	for i := 0; i < numClients; i++ {
+		source := make(chan Response)
+		sources = append(sources, source)
 	}
+
+	// spawn clients and send requests
+	for i := 0; i < numClients; i++ {
+		go func(requests []*Request, source chan<- Response) {
+			for {
+				rand.Seed(time.Now().UnixNano())
+				request := requests[rand.Intn(len(requests))]
+
+				resp, err := sendRequest(request)
+				if err != nil {
+					fmt.Println(err)
+				}
+
+				source <- resp
+			}
+		}(requests, sources[i])
+	}
+
+	// collect responses
+	resChan := Funnel(sources...) // TODO: check the directionality of the channels
+
+	// spawn workers and process responses
+	Split(resChan, numWorkers)
 
 	select {
 	case <-timeoutChan:
