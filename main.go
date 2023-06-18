@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -36,7 +37,7 @@ func validateRequests(requests []Request) {
 	// TODO: handle body parsing errors and replace body with byte stream
 }
 
-func sendRequest(request *Request) (Response, error) {
+func sendRequest(request *Request, reqCountChan chan<- struct{}, resCountChan chan<- struct{}) (Response, error) {
 	client := &http.Client{}
 
 	var req *http.Request
@@ -74,13 +75,16 @@ func sendRequest(request *Request) (Response, error) {
 		return Response{}, err
 	}
 
+	// send req
 	startTime = time.Now()
+	reqCountChan <- struct{}{}
 	resp, err = client.Do(req)
 	if err != nil {
 		return Response{}, err
 	}
 
 	responseTime := time.Since(startTime)
+	resCountChan <- struct{}{}
 
 	return Response{
 		StatusCode:   resp.StatusCode,
@@ -90,7 +94,7 @@ func sendRequest(request *Request) (Response, error) {
 }
 
 func ProcessResponse(response Response) {
-	fmt.Println("INFO:  ", response.Timestamp, response.StatusCode, response.ResponseTime)
+	//fmt.Println("INFO:  ", response.Timestamp, response.StatusCode, response.ResponseTime)
 }
 
 func Funnel(sources ...chan Response) <-chan Response {
@@ -160,6 +164,35 @@ func main() {
 	numClients := 10
 	numWorkers := 5
 
+	reqCountChan := make(chan struct{}, numClients)
+	resCountChan := make(chan struct{}, numClients)
+	var reqCount, resCount uint64
+
+	// launch counter goroutines
+	go func() {
+		for range reqCountChan {
+			atomic.AddUint64(&reqCount, 1)
+		}
+	}()
+
+	go func() {
+		for range resCountChan {
+			atomic.AddUint64(&resCount, 1)
+		}
+	}()
+
+	// get RPS values
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	go func() {
+		for range ticker.C {
+			request := atomic.SwapUint64(&reqCount, 0)
+			response := atomic.SwapUint64(&resCount, 0)
+			fmt.Printf("Requests per second: %d, Responses per second: %d\n", request, response)
+		}
+	}()
+
 	var sources []chan Response
 
 	for i := 0; i < numClients; i++ {
@@ -174,7 +207,7 @@ func main() {
 				rand.Seed(time.Now().UnixNano())
 				request := requests[rand.Intn(len(requests))]
 
-				resp, err := sendRequest(request)
+				resp, err := sendRequest(request, reqCountChan, resCountChan)
 				if err != nil {
 					fmt.Println(err)
 				}
