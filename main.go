@@ -30,10 +30,6 @@ type Response struct {
 func validateRequests(requests []Request) {
 	// TODO: check only GET, POST, PUT and DELETE are present
 
-	// TODO: convert verb from string to Verb
-
-	// TODO: check if body exists for post and put request then the content type is json
-
 	// TODO: handle body parsing errors and replace body with byte stream
 }
 
@@ -97,42 +93,6 @@ func ProcessResponse(response Response) {
 	//fmt.Println("INFO:  ", response.Timestamp, response.StatusCode, response.ResponseTime)
 }
 
-func Funnel(sources ...chan Response) <-chan Response {
-	output := make(chan Response) // TODO: Close this channel and goroutines using wg
-
-	for _, source := range sources {
-		go func(c <-chan Response) {
-			for {
-				select {
-				case resp, ok := <-c:
-					if !ok {
-						return
-					}
-					output <- resp
-				}
-			}
-		}(source)
-	}
-
-	return output
-}
-
-func Split(source <-chan Response, numWorkers int) {
-	for i := 0; i < numWorkers; i++ {
-		go func() {
-			for {
-				select {
-				case resp, ok := <-source:
-					if !ok {
-						return
-					}
-					ProcessResponse(resp)
-				}
-			}
-		}()
-	}
-}
-
 func main() {
 	var err error
 
@@ -162,11 +122,10 @@ func main() {
 	timeoutChan := time.After(timeout)
 
 	numClients := 10
-	numWorkers := 5
 
 	reqCountChan := make(chan struct{}, numClients)
 	resCountChan := make(chan struct{}, numClients)
-	var reqCount, resCount uint64
+	var reqCount, resCount, errorCount uint64
 
 	// launch counter goroutines
 	go func() {
@@ -189,20 +148,13 @@ func main() {
 		for range ticker.C {
 			request := atomic.SwapUint64(&reqCount, 0)
 			response := atomic.SwapUint64(&resCount, 0)
-			fmt.Printf("Requests per second: %d, Responses per second: %d\n", request, response)
+			fmt.Printf("INFO:  requests per second: %d, responses per second: %d\n", request, response)
 		}
 	}()
 
-	var sources []chan Response
-
-	for i := 0; i < numClients; i++ {
-		source := make(chan Response)
-		sources = append(sources, source)
-	}
-
 	// spawn clients and send requests
 	for i := 0; i < numClients; i++ {
-		go func(requests []*Request, source chan<- Response) {
+		go func(requests []*Request) {
 			for {
 				rand.Seed(time.Now().UnixNano())
 				request := requests[rand.Intn(len(requests))]
@@ -212,19 +164,19 @@ func main() {
 					fmt.Println(err)
 				}
 
-				source <- resp
+				if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+					fmt.Printf("Error:  timestamp: %d\t verb: %s\turl: %s\tstatus code: %d\n", resp.Timestamp, request.Verb, request.URL, resp.StatusCode)
+					atomic.AddUint64(&errorCount, 1)
+				}
+
 			}
-		}(requests, sources[i])
+		}(requests)
 	}
-
-	// collect responses
-	resChan := Funnel(sources...) // TODO: check the directionality of the channels
-
-	// spawn workers and process responses
-	Split(resChan, numWorkers)
 
 	select {
 	case <-timeoutChan:
 		fmt.Println("INFO:  Test duration completed. Ending test")
 	}
+
+	fmt.Printf("INFO:  error count: %d\n", errorCount)
 }
