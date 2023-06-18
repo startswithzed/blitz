@@ -15,10 +15,11 @@ import (
 )
 
 type Request struct {
-	Verb    string            `json:"verb"`
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers"`
-	Body    interface{}       `json:"body"`
+	Verb      string            `json:"verb"`
+	URL       string            `json:"url"`
+	Headers   map[string]string `json:"headers"`
+	Body      interface{}       `json:"body"`
+	BodyBytes []byte
 }
 
 type Response struct {
@@ -27,10 +28,28 @@ type Response struct {
 	Timestamp    int64
 }
 
-func validateRequests(requests []Request) {
-	// TODO: check only GET, POST, PUT and DELETE are present
+func validateRequests(requests []*Request) []*Request {
+	validRequests := make([]*Request, 0)
 
-	// TODO: handle body parsing errors and replace body with byte stream
+	for _, req := range requests {
+		switch req.Verb {
+		case "GET", "POST", "PUT", "DELETE":
+			bodyBytes, err := json.Marshal(req.Body)
+			if err != nil {
+				fmt.Printf("Error:  could not parse request body for verb: %s\turl: %s\n", req.Verb, req.URL)
+				continue
+			}
+			req.BodyBytes = bodyBytes
+			validRequests = append(validRequests, req)
+		default:
+			fmt.Printf("Error:  verb: %s not allowed. Only GET, POST, PUT, DELETE are allowed\n", req.Verb)
+			continue
+		}
+	}
+
+	fmt.Printf("INFO:  total requests: %d\t valid requests: %d\n", len(requests), len(validRequests))
+
+	return validRequests
 }
 
 func sendRequest(request *Request, reqCountChan chan<- struct{}, resCountChan chan<- struct{}) (Response, error) {
@@ -40,7 +59,6 @@ func sendRequest(request *Request, reqCountChan chan<- struct{}, resCountChan ch
 	var resp *http.Response
 	var err error
 	var startTime time.Time
-	var body []byte
 
 	switch request.Verb {
 	case "GET":
@@ -49,14 +67,12 @@ func sendRequest(request *Request, reqCountChan chan<- struct{}, resCountChan ch
 			req.Header.Set(k, v)
 		}
 	case "POST":
-		body, err = json.Marshal(request.Body) // TODO: Handle body parsing errors in the validate function and store byte slice instead
-		req, err = http.NewRequest(request.Verb, request.URL, bytes.NewReader(body))
+		req, err = http.NewRequest(request.Verb, request.URL, bytes.NewReader(request.BodyBytes))
 		for k, v := range request.Headers {
 			req.Header.Set(k, v)
 		}
 	case "PUT":
-		body, err = json.Marshal(request.Body)
-		req, err = http.NewRequest(request.Verb, request.URL, bytes.NewReader(body))
+		req, err = http.NewRequest(request.Verb, request.URL, bytes.NewReader(request.BodyBytes))
 		for k, v := range request.Headers {
 			req.Header.Set(k, v)
 		}
@@ -89,10 +105,6 @@ func sendRequest(request *Request, reqCountChan chan<- struct{}, resCountChan ch
 	}, nil
 }
 
-func ProcessResponse(response Response) {
-	//fmt.Println("INFO:  ", response.Timestamp, response.StatusCode, response.ResponseTime)
-}
-
 func main() {
 	var err error
 
@@ -102,7 +114,7 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Printf("Successfully Opened %s\n", reqSpec.Name())
+	fmt.Printf("INFO:  successfully pened %s\n", reqSpec.Name())
 
 	bytes, err := io.ReadAll(reqSpec)
 	if err != nil {
@@ -116,7 +128,7 @@ func main() {
 		fmt.Println(err)
 	}
 
-	//validateRequests(requests)
+	requests = validateRequests(requests)
 
 	timeout := 10 * time.Second
 	timeoutChan := time.After(timeout)
