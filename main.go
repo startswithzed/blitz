@@ -7,11 +7,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 type Request struct {
@@ -36,18 +40,18 @@ func validateRequests(requests []*Request) []*Request {
 		case "GET", "POST", "PUT", "DELETE":
 			bodyBytes, err := json.Marshal(req.Body)
 			if err != nil {
-				fmt.Printf("Error:  could not parse request body for verb: %s\turl: %s\n", req.Verb, req.URL)
+				log.Printf("Error: could not parse request body for verb: %s\turl: %s\n", req.Verb, req.URL)
 				continue
 			}
 			req.BodyBytes = bodyBytes
 			validRequests = append(validRequests, req)
 		default:
-			fmt.Printf("Error:  verb: %s not allowed. Only GET, POST, PUT, DELETE are allowed\n", req.Verb)
+			log.Printf("Error: verb: %s not allowed. Only GET, POST, PUT, DELETE are allowed\n", req.Verb)
 			continue
 		}
 	}
 
-	fmt.Printf("INFO:  total requests: %d\t valid requests: %d\n", len(requests), len(validRequests))
+	log.Printf("INFO:  total requests: %d\t valid requests: %d\n", len(requests), len(validRequests))
 
 	return validRequests
 }
@@ -105,90 +109,130 @@ func sendRequest(request *Request, reqCountChan chan<- struct{}, resCountChan ch
 	}, nil
 }
 
-func main() {
-	var err error
+type Config struct {
+	ReqSpecPath     string
+	Duration        int
+	NumClients      int
+	MetricsEndpoint string
+}
 
-	reqSpec, err := os.Open("request_spec.json")
-	defer reqSpec.Close()
+var config Config
 
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Printf("INFO:  successfully pened %s\n", reqSpec.Name())
+func init() {
+	rootCmd.Flags().StringVarP(&config.ReqSpecPath, "req-spec", "r", "", "Path to the request specification json file")
+	rootCmd.Flags().IntVarP(&config.Duration, "duration", "d", 1, "Duration of the test in minutes")
+	rootCmd.Flags().IntVarP(&config.NumClients, "num-clients", "c", 1, "Number of concurrent clients sending requests to the server")
+	rootCmd.Flags().StringVarP(&config.MetricsEndpoint, "metrics-endpoint", "m", "", "Server metrics endpoint (optional)")
 
-	bytes, err := io.ReadAll(reqSpec)
-	if err != nil {
-		fmt.Println(err)
-	}
+	rootCmd.MarkFlagRequired("req-spec")
+}
 
-	var requests []*Request
+var rootCmd = &cobra.Command{
+	// TODO: Add detailed documentation
 
-	err = json.Unmarshal(bytes, &requests)
-	if err != nil {
-		fmt.Println(err)
-	}
+	Use:  "webruckus --req-spec /path/to/spec.json --duration 60 --num-clients 10",
+	Long: "Load test your web server.",
+	Run: func(cmd *cobra.Command, args []string) {
+		// TODO: Handle error by shutting down the program
 
-	requests = validateRequests(requests)
+		var err error
 
-	timeout := 10 * time.Second
-	timeoutChan := time.After(timeout)
-
-	numClients := 10
-
-	reqCountChan := make(chan struct{}, numClients)
-	resCountChan := make(chan struct{}, numClients)
-	var reqCount, resCount, errorCount uint64
-
-	// launch counter goroutines
-	go func() {
-		for range reqCountChan {
-			atomic.AddUint64(&reqCount, 1)
+		ext := filepath.Ext(config.ReqSpecPath)
+		if ext != ".json" {
+			log.Fatal("Invalid file format. Expected a JSON file.")
 		}
-	}()
 
-	go func() {
-		for range resCountChan {
-			atomic.AddUint64(&resCount, 1)
+		reqSpec, err := os.Open(config.ReqSpecPath)
+		if err != nil {
+			log.Fatalf("Could not open file: %v", err)
 		}
-	}()
 
-	// get RPS values
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	go func() {
-		for range ticker.C {
-			request := atomic.SwapUint64(&reqCount, 0)
-			response := atomic.SwapUint64(&resCount, 0)
-			fmt.Printf("INFO:  requests per second: %d, responses per second: %d\n", request, response)
+		bytes, err := io.ReadAll(reqSpec)
+		if err != nil {
+			log.Fatalf("Error reading file: %v", err)
 		}
-	}()
 
-	// spawn clients and send requests
-	for i := 0; i < numClients; i++ {
-		go func(requests []*Request) {
-			for {
-				rand.Seed(time.Now().UnixNano())
-				request := requests[rand.Intn(len(requests))]
+		err = reqSpec.Close()
+		if err != nil {
+			log.Println("WARNING:  could not close file reader.")
+		}
 
-				resp, err := sendRequest(request, reqCountChan, resCountChan)
-				if err != nil {
-					fmt.Println(err)
-				}
+		var requests []*Request
 
-				if resp.StatusCode >= 300 || resp.StatusCode < 200 {
-					fmt.Printf("Error:  timestamp: %d\t verb: %s\turl: %s\tstatus code: %d\n", resp.Timestamp, request.Verb, request.URL, resp.StatusCode)
-					atomic.AddUint64(&errorCount, 1)
-				}
+		err = json.Unmarshal(bytes, &requests)
+		if err != nil {
+			log.Fatalf("Error parsing json file: %v", err)
+		}
 
+		requests = validateRequests(requests)
+
+		duration := time.Duration(config.Duration) * time.Minute
+		timeoutChan := time.After(duration)
+
+		numClients := config.NumClients
+
+		reqCountChan := make(chan struct{}, numClients)
+		resCountChan := make(chan struct{}, numClients)
+		var reqCount, resCount, errorCount uint64
+
+		// launch counter goroutines
+		go func() {
+			for range reqCountChan {
+				atomic.AddUint64(&reqCount, 1)
 			}
-		}(requests)
-	}
+		}()
 
-	select {
-	case <-timeoutChan:
-		fmt.Println("INFO:  Test duration completed. Ending test")
-	}
+		go func() {
+			for range resCountChan {
+				atomic.AddUint64(&resCount, 1)
+			}
+		}()
 
-	fmt.Printf("INFO:  error count: %d\n", errorCount)
+		// get RPS values
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		go func() {
+			for range ticker.C {
+				request := atomic.SwapUint64(&reqCount, 0)
+				response := atomic.SwapUint64(&resCount, 0)
+				log.Printf("INFO:  requests per second: %d, responses per second: %d\n", request, response)
+			}
+		}()
+
+		// spawn clients and send requests
+		for i := 0; i < numClients; i++ {
+			go func(requests []*Request) {
+				for {
+					rand.Seed(time.Now().UnixNano())
+					request := requests[rand.Intn(len(requests))]
+
+					resp, err := sendRequest(request, reqCountChan, resCountChan)
+					if err != nil {
+						fmt.Println(err) // TODO: Handle this error in a separate stream
+					}
+
+					if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+						log.Printf("Error: timestamp: %d\t verb: %s\turl: %s\tstatus code: %d\n", resp.Timestamp, request.Verb, request.URL, resp.StatusCode)
+						atomic.AddUint64(&errorCount, 1)
+					}
+
+				}
+			}(requests)
+		}
+
+		select {
+		case <-timeoutChan:
+			log.Println("INFO:  Test duration completed. Ending test")
+		}
+
+		log.Printf("INFO:  error count: %d\n", errorCount)
+
+	},
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatal(err)
+	}
 }
