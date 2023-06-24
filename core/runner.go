@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -15,6 +16,7 @@ type Runner struct {
 	config       Config
 	requests     []*Request
 	ctx          context.Context
+	wg           *sync.WaitGroup
 	reqCount     uint64
 	resCount     uint64
 	errorCount   uint64
@@ -27,6 +29,7 @@ func NewRunner(config Config) *Runner {
 
 	return &Runner{
 		config:       config,
+		wg:           &sync.WaitGroup{},
 		reqCountChan: make(chan struct{}, config.NumClients),
 		resCountChan: make(chan struct{}, config.NumClients),
 		errorStream:  make(chan ErrorLog),
@@ -85,9 +88,11 @@ func (r *Runner) validateRequests() {
 }
 
 func (r *Runner) initCounters() {
-	// TODO: use context api to gracefully exit goroutines
+	r.wg.Add(1)
 
 	go func(ctx context.Context) {
+		defer r.wg.Done()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -102,7 +107,11 @@ func (r *Runner) initCounters() {
 		}
 	}(r.ctx)
 
+	r.wg.Add(1)
+
 	go func(ctx context.Context) {
+		defer r.wg.Done()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -119,7 +128,10 @@ func (r *Runner) initCounters() {
 }
 
 func (r *Runner) getRPS(ticker *time.Ticker) {
+	r.wg.Add(1)
+
 	go func(ctx context.Context) {
+		defer r.wg.Done()
 		for {
 			select {
 			case <-ctx.Done():
@@ -138,7 +150,11 @@ func (r *Runner) getRPS(ticker *time.Ticker) {
 }
 
 func (r *Runner) countErrors() {
+	r.wg.Add(1)
+
 	go func(ctx context.Context) {
+		defer r.wg.Done()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -171,14 +187,11 @@ func (r *Runner) LoadTest() {
 	r.initCounters()
 
 	for i := 0; i < r.config.NumClients; i++ {
-		client := newClient(r.requests, r.ctx, r.reqCountChan, r.resCountChan)
+		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan)
 		client.start()
 	}
 
-	select {
-	case <-ctx.Done():
-		log.Println("INFO:  Test duration completed. Ending test")
-	}
+	r.wg.Wait()
 
 	log.Printf("INFO:  error count: %d\n", r.errorCount)
 }

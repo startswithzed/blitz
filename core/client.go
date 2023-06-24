@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -26,15 +27,23 @@ type Response struct {
 type client struct {
 	requests     []*Request
 	ctx          context.Context
+	wg           *sync.WaitGroup
 	reqCountChan chan<- struct{}
 	resCountChan chan<- struct{}
 	errorStream  chan<- ErrorLog
 }
 
-func newClient(reqs []*Request, ctx context.Context, reqCountChan chan struct{}, resCountChan chan struct{}) *client {
+func newClient(
+	reqs []*Request,
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	reqCountChan chan struct{},
+	resCountChan chan struct{},
+) *client {
 	return &client{
 		requests:     reqs,
 		ctx:          ctx,
+		wg:           wg,
 		reqCountChan: reqCountChan,
 		resCountChan: resCountChan,
 	}
@@ -94,12 +103,16 @@ func (c *client) sendRequest(request *Request) (Response, error) {
 
 func (c *client) start() {
 	rand.Seed(time.Now().UnixNano())
+	c.wg.Add(1)
 
 	go func(ctx context.Context) {
+		defer c.wg.Done()
+
 		for {
 			select {
 			case <-ctx.Done():
 				log.Println("INFO: shutting down client goroutine")
+				return
 			default:
 				request := c.requests[rand.Intn(len(c.requests))]
 
