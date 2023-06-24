@@ -2,7 +2,8 @@ package core
 
 import (
 	"bytes"
-	"fmt"
+	"context"
+	"log"
 	"math/rand"
 	"net/http"
 	"time"
@@ -24,14 +25,16 @@ type Response struct {
 
 type client struct {
 	requests     []*Request
+	ctx          context.Context
 	reqCountChan chan<- struct{}
 	resCountChan chan<- struct{}
 	errorStream  chan<- ErrorLog
 }
 
-func newClient(reqs []*Request, reqCountChan chan struct{}, resCountChan chan struct{}) *client {
+func newClient(reqs []*Request, ctx context.Context, reqCountChan chan struct{}, resCountChan chan struct{}) *client {
 	return &client{
 		requests:     reqs,
+		ctx:          ctx,
 		reqCountChan: reqCountChan,
 		resCountChan: resCountChan,
 	}
@@ -90,25 +93,31 @@ func (c *client) sendRequest(request *Request) (Response, error) {
 }
 
 func (c *client) start() {
-	go func() {
+	rand.Seed(time.Now().UnixNano())
+
+	go func(ctx context.Context) {
 		for {
-			rand.Seed(time.Now().UnixNano())
-			request := c.requests[rand.Intn(len(c.requests))]
+			select {
+			case <-ctx.Done():
+				log.Println("INFO: shutting down client goroutine")
+			default:
+				request := c.requests[rand.Intn(len(c.requests))]
 
-			resp, err := c.sendRequest(request)
-			if err != nil {
-				fmt.Println(err) // TODO: return this error in an error stream
-			}
-
-			if resp.StatusCode >= 300 || resp.StatusCode < 200 {
-				c.errorStream <- ErrorLog{
-					Timestamp:  resp.Timestamp,
-					Verb:       request.Verb,
-					URL:        request.URL,
-					StatusCode: resp.StatusCode,
+				resp, err := c.sendRequest(request)
+				if err != nil {
+					log.Println(err) // TODO: return this error in an error stream
 				}
-				continue
+
+				if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+					c.errorStream <- ErrorLog{
+						Timestamp:  resp.Timestamp,
+						Verb:       request.Verb,
+						URL:        request.URL,
+						StatusCode: resp.StatusCode,
+					}
+					continue
+				}
 			}
 		}
-	}()
+	}(c.ctx)
 }
