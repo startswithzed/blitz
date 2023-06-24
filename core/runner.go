@@ -1,11 +1,13 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -13,6 +15,8 @@ import (
 type Runner struct {
 	config       Config
 	requests     []*Request
+	ctx          context.Context
+	wg           *sync.WaitGroup
 	reqCount     uint64
 	resCount     uint64
 	errorCount   uint64
@@ -25,6 +29,7 @@ func NewRunner(config Config) *Runner {
 
 	return &Runner{
 		config:       config,
+		wg:           &sync.WaitGroup{},
 		reqCountChan: make(chan struct{}, config.NumClients),
 		resCountChan: make(chan struct{}, config.NumClients),
 		errorStream:  make(chan ErrorLog),
@@ -32,6 +37,7 @@ func NewRunner(config Config) *Runner {
 }
 
 // TODO: Error handling logic should be extracted and left to the main function
+// TODO: Use wait groups to handle goroutine exit
 
 func (r *Runner) getRequestSpec() {
 	ext := filepath.Ext(r.config.ReqSpecPath)
@@ -82,65 +88,110 @@ func (r *Runner) validateRequests() {
 }
 
 func (r *Runner) initCounters() {
-	// TODO: use context api to gracefully exit goroutines
+	r.wg.Add(1)
 
-	go func() {
-		for range r.reqCountChan {
-			atomic.AddUint64(&r.reqCount, 1)
-		}
-	}()
+	go func(ctx context.Context) {
+		defer r.wg.Done()
 
-	go func() {
-		for range r.resCountChan {
-			atomic.AddUint64(&r.resCount, 1)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("INFO:  exiting request count goroutine")
+				return
+			case _, ok := <-r.reqCountChan:
+				if !ok {
+					return
+				}
+				atomic.AddUint64(&r.reqCount, 1)
+			}
 		}
-	}()
+	}(r.ctx)
+
+	r.wg.Add(1)
+
+	go func(ctx context.Context) {
+		defer r.wg.Done()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("INFO:  exiting response count goroutine")
+				return
+			case _, ok := <-r.resCountChan:
+				if !ok {
+					return
+				}
+				atomic.AddUint64(&r.resCount, 1)
+			}
+		}
+	}(r.ctx)
 }
 
 func (r *Runner) getRPS(ticker *time.Ticker) {
-	// TODO: add graceful exit logic
-	go func() {
-		for range ticker.C {
-			request := atomic.SwapUint64(&r.reqCount, 0)
-			response := atomic.SwapUint64(&r.resCount, 0)
-			log.Printf("INFO:  requests per second: %d, responses per second: %d\n", request, response)
+	r.wg.Add(1)
+
+	go func(ctx context.Context) {
+		defer r.wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("INFO:  exiting RPS goroutine")
+				return
+			case _, ok := <-ticker.C:
+				if !ok {
+					return
+				}
+				request := atomic.SwapUint64(&r.reqCount, 0)
+				response := atomic.SwapUint64(&r.resCount, 0)
+				log.Printf("INFO:  requests per second: %d, responses per second: %d\n", request, response)
+			}
 		}
-	}()
+	}(r.ctx)
 }
 
 func (r *Runner) countErrors() {
-	go func() {
-		for range r.errorStream {
-			atomic.AddUint64(&r.errorCount, 1)
+	r.wg.Add(1)
+
+	go func(ctx context.Context) {
+		defer r.wg.Done()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("INFO:  exiting error count goroutine")
+				return
+			case _, ok := <-r.errorStream:
+				if !ok {
+					return
+				}
+				atomic.AddUint64(&r.errorCount, 1)
+			}
 		}
-	}()
+	}(r.ctx)
 }
 
 func (r *Runner) LoadTest() {
-	// TODO: end test after duration
-
 	r.getRequestSpec()
 
 	r.validateRequests()
 
-	r.initCounters()
+	duration := time.Duration(r.config.Duration) * time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	defer cancel()
+	r.ctx = ctx
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	r.getRPS(ticker)
 
-	duration := time.Duration(r.config.Duration) * time.Minute
-	timeoutChan := time.After(duration)
+	r.initCounters()
 
 	for i := 0; i < r.config.NumClients; i++ {
-		client := newClient(r.requests, r.reqCountChan, r.resCountChan)
+		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan)
 		client.start()
 	}
 
-	select {
-	case <-timeoutChan:
-		log.Println("INFO:  Test duration completed. Ending test")
-	}
+	r.wg.Wait()
 
 	log.Printf("INFO:  error count: %d\n", r.errorCount)
 }
