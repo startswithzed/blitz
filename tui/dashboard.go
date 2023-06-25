@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -8,6 +9,13 @@ import (
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
 )
+
+func formatDuration(d time.Duration) string {
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
 
 func drawLineGraph(title string, x1 int, y1 int, x2 int, y2 int, dataChan chan float64, plots *[]ui.Drawable) {
 	dataArr := make([][]float64, 1)
@@ -42,6 +50,42 @@ func drawLineGraph(title string, x1 int, y1 int, x2 int, y2 int, dataChan chan f
 	}()
 }
 
+func drawGauge(title string, duration time.Duration, ticker time.Ticker, width int, margin int, height int, plots *[]ui.Drawable) {
+	startTime := time.Now()
+	endTime := startTime.Add(duration)
+	percent := 0
+
+	g := widgets.NewGauge()
+	g.Title = title
+	g.SetRect(0, 0, 3*width+2*margin, height)
+	g.BarColor = ui.ColorGreen
+	g.TitleStyle.Fg = ui.ColorCyan
+	g.Percent = percent
+
+	*plots = append(*plots, g)
+
+	go func(percent *int) {
+		for {
+			select {
+			case now := <-ticker.C:
+				elapsed := now.Sub(startTime)
+				remaining := endTime.Sub(now)
+
+				if remaining <= 0 {
+					break
+				}
+
+				*percent = int(elapsed * 100 / duration)
+
+				g.Percent = *percent
+				g.Label = fmt.Sprintf("%v%% %v/%v", g.Percent, formatDuration(elapsed), formatDuration(duration))
+				ui.Clear()
+				ui.Render(*plots...)
+			}
+		}
+	}(&percent)
+}
+
 func DrawDashboard() {
 	if err := ui.Init(); err != nil {
 		log.Fatalf("failed to initialize termui: %v", err)
@@ -49,6 +93,18 @@ func DrawDashboard() {
 	defer ui.Close()
 
 	var outputs []ui.Drawable
+
+	width := 45
+	margin := 2
+	durationGaugeHeight := 3
+	height := width / 3
+
+	duration := 1 * time.Minute
+
+	durationTicker := time.NewTicker(1 * time.Second)
+	defer durationTicker.Stop()
+
+	drawGauge("Test Duration", duration, *durationTicker, width, margin, durationGaugeHeight, &outputs)
 
 	ticker := time.NewTicker(200 * time.Millisecond)
 
@@ -73,15 +129,11 @@ func DrawDashboard() {
 		}
 	}()
 
-	width := 45
-	margin := 2
-	height := width / 3
+	drawLineGraph("Responses times", 0, durationGaugeHeight+margin, width, durationGaugeHeight+margin+height, resTimeChan, &outputs)
 
-	drawLineGraph("Responses times", 0, 0, width, height, resTimeChan, &outputs)
+	drawLineGraph("Requests per second", width+margin, durationGaugeHeight+margin, 2*width+margin, durationGaugeHeight+margin+height, reqPSChan, &outputs)
 
-	drawLineGraph("Requests per second", width+margin, 0, 2*width+margin, height, reqPSChan, &outputs)
-
-	drawLineGraph("Responses per second", 2*width+2*margin, 0, 3*width+2*margin, height, resPSChan, &outputs)
+	drawLineGraph("Responses per second", 2*width+2*margin, durationGaugeHeight+margin, 3*width+2*margin, durationGaugeHeight+margin+height, resPSChan, &outputs)
 
 	uiEvents := ui.PollEvents()
 	for {
