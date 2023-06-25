@@ -55,15 +55,20 @@ func DrawDashboard() {
 	resTimeChan := make(chan float64)
 	defer close(resTimeChan) // TODO: check for graceful exit
 
-	rpsChan := make(chan float64)
-	defer close(rpsChan)
+	reqPSChan := make(chan float64)
+	defer close(reqPSChan)
+
+	resPSChan := make(chan float64)
+	defer close(resPSChan)
 
 	go func() {
+		rand.Seed(time.Now().UnixNano())
 		for {
 			select {
 			case <-ticker.C:
 				resTimeChan <- float64(rand.Intn(20))
-				rpsChan <- float64(rand.Intn(20))
+				reqPSChan <- float64(rand.Intn(50))
+				resPSChan <- float64(rand.Intn(50))
 			}
 		}
 	}()
@@ -74,9 +79,9 @@ func DrawDashboard() {
 
 	drawLineGraph("Responses times", 0, 0, width, height, resTimeChan, &outputs)
 
-	drawLineGraph("Requests per second", width+margin, 0, 2*width+margin, height, rpsChan, &outputs)
+	drawLineGraph("Requests per second", width+margin, 0, 2*width+margin, height, reqPSChan, &outputs)
 
-	drawLineGraph("Responses per second", 2*width+2*margin, 0, 3*width+2*margin, height, resTimeChan, &outputs)
+	drawLineGraph("Responses per second", 2*width+2*margin, 0, 3*width+2*margin, height, resPSChan, &outputs)
 
 	uiEvents := ui.PollEvents()
 	for {
