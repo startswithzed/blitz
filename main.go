@@ -14,27 +14,30 @@ func main() {
 	}
 	defer ui.Close()
 
-	n := 500
+	n := 45
 
-	rps := make([][]float64, 1)
-	rps[0] = make([]float64, n)
+	data := make([][]float64, 1)
+	data[0] = make([]float64, n)
+	var rps []float64
 
 	ticker := time.NewTicker(200 * time.Millisecond)
-	i := 0
 
 	p0 := widgets.NewPlot()
 	p0.Title = "Response Time"
-	p0.Data = rps
-	p0.SetRect(0, 0, 100, 25)
-	p0.AxesColor = ui.ColorWhite
-	p0.LineColors[0] = ui.ColorGreen
+	p0.Data = data
+	p0.SetRect(0, 0, n+5, n/2)
+	p0.AxesColor = ui.ColorBlue
+	p0.LineColors[0] = ui.ColorMagenta
 
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				rps[0][i] = float64(rand.Intn(20))
-				i++
+				rps = append(rps, float64(rand.Intn(20)))
+				if len(rps) > n {
+					rps = rps[1:]
+				}
+				copy(data[0][:], rps)
 				ui.Clear()
 				ui.Render(p0)
 			}
