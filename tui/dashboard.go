@@ -177,7 +177,7 @@ func DrawDashboard() {
 		y2: GaugeHeight + GraphHeight,
 	}
 
-	drawLineGraph("Responses times", resTimeGraphPos, resTimeChan, &outputs)
+	drawLineGraph("Responses times (ms)", resTimeGraphPos, resTimeChan, &outputs)
 
 	reqPSGraphPos := widgetPosition{
 		x1: MaxWidth / 3,
