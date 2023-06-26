@@ -71,7 +71,10 @@ func (d *Dashboard) launchRefreshWorker() {
 	go func() {
 		for {
 			select {
-			case <-d.refreshReqChan:
+			case _, ok := <-d.refreshReqChan:
+				if !ok {
+					return
+				}
 				d.refreshUI()
 			}
 		}
