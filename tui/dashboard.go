@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strconv"
 	"time"
 
 	ui "github.com/gizak/termui/v3"
@@ -86,6 +87,31 @@ func drawGauge(title string, duration time.Duration, ticker time.Ticker, width i
 	}()
 }
 
+func drawTable(title string, x1 int, y1 int, x2 int, y2 int, avgResTime time.Duration, maxResTime time.Duration, minResTime time.Duration, errCount int64, plots *[]ui.Drawable) {
+	t := widgets.NewTable()
+	t.Title = title
+	t.Rows = [][]string{
+		{
+			"Average Response Time",
+			"Max Response Time",
+			"Min Response Time",
+			"Error Count",
+		},
+		{
+			strconv.FormatInt(avgResTime.Milliseconds(), 10),
+			strconv.FormatInt(maxResTime.Milliseconds(), 10),
+			strconv.FormatInt(minResTime.Milliseconds(), 10),
+			strconv.FormatInt(errCount, 10),
+		},
+	}
+	t.RowSeparator = true
+	t.SetRect(x1, y1, x2, y2)
+	t.RowStyles[0] = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
+	t.TextAlignment = ui.AlignCenter
+
+	*plots = append(*plots, t)
+}
+
 func DrawDashboard() {
 	if err := ui.Init(); err != nil {
 		log.Fatalf("failed to initialize termui: %v", err)
@@ -134,6 +160,8 @@ func DrawDashboard() {
 	drawLineGraph("Requests per second", width+margin, durationGaugeHeight+margin, 2*width+margin, durationGaugeHeight+margin+height, reqPSChan, &outputs)
 
 	drawLineGraph("Responses per second", 2*width+2*margin, durationGaugeHeight+margin, 3*width+2*margin, durationGaugeHeight+margin+height, resPSChan, &outputs)
+
+	drawTable("Response Stats", 0, 4*(durationGaugeHeight+margin)+margin, 3*width+2*margin, 4*(durationGaugeHeight+margin)+margin+5, 14*time.Millisecond, 18*time.Millisecond, 10*time.Millisecond, 42, &outputs)
 
 	uiEvents := ui.PollEvents()
 	for {
