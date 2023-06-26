@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"github.com/startswithzed/web-ruckus/tui"
 	"io"
 	"log"
 	"os"
@@ -185,6 +186,9 @@ func (r *Runner) LoadTest() {
 		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan)
 		client.start()
 	}
+
+	dashboard := tui.NewDashboard(duration, *ticker)
+	dashboard.DrawDashboard()
 
 	r.wg.Wait()
 

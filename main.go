@@ -1,7 +1,13 @@
 package main
 
-import "github.com/startswithzed/web-ruckus/tui"
+import (
+	"github.com/startswithzed/web-ruckus/cmd"
+	"log"
+)
 
 func main() {
-	tui.DrawDashboard()
+	rootCmd := cmd.GetRootCmd()
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatal(err)
+	}
 }
