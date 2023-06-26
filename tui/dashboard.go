@@ -11,6 +11,13 @@ import (
 	"github.com/gizak/termui/v3/widgets"
 )
 
+type widgetPosition struct {
+	x1 int
+	x2 int
+	y1 int
+	y2 int
+}
+
 func formatDuration(d time.Duration) string {
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60
@@ -18,15 +25,15 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 }
 
-func drawLineGraph(title string, x1 int, y1 int, x2 int, y2 int, dataChan chan float64, plots *[]ui.Drawable) {
+func drawLineGraph(title string, pos widgetPosition, dataChan chan float64, plots *[]ui.Drawable) {
 	dataArr := make([][]float64, 1)
-	dataArr[0] = make([]float64, x2-x1)
+	dataArr[0] = make([]float64, pos.x2-pos.x1)
 	var data []float64
 
 	p := widgets.NewPlot()
 	p.Title = title
 	p.Data = dataArr
-	p.SetRect(x1, y1, x2, y2)
+	p.SetRect(pos.x1, pos.y1, pos.x2, pos.y2)
 	p.AxesColor = ui.ColorBlue
 	p.LineColors[0] = ui.ColorMagenta
 
@@ -40,7 +47,7 @@ func drawLineGraph(title string, x1 int, y1 int, x2 int, y2 int, dataChan chan f
 					return
 				}
 				data = append(data, val)
-				if len(data) > x2-x1 {
+				if len(data) > pos.x2-pos.x1 {
 					data = data[1:]
 				}
 				copy(dataArr[0][:], data)
@@ -51,13 +58,13 @@ func drawLineGraph(title string, x1 int, y1 int, x2 int, y2 int, dataChan chan f
 	}()
 }
 
-func drawGauge(title string, duration time.Duration, ticker time.Ticker, width int, margin int, height int, plots *[]ui.Drawable) {
+func drawGauge(title string, pos widgetPosition, duration time.Duration, ticker time.Ticker, plots *[]ui.Drawable) {
 	startTime := time.Now()
 	endTime := startTime.Add(duration)
 
 	g := widgets.NewGauge()
 	g.Title = title
-	g.SetRect(0, 0, 3*width+2*margin, height)
+	g.SetRect(pos.x1, pos.y1, pos.x2, pos.y2)
 	g.BarColor = ui.ColorGreen
 	g.TitleStyle.Fg = ui.ColorCyan
 	g.Percent = 0
@@ -87,7 +94,7 @@ func drawGauge(title string, duration time.Duration, ticker time.Ticker, width i
 	}()
 }
 
-func drawTable(title string, x1 int, y1 int, x2 int, y2 int, avgResTime time.Duration, maxResTime time.Duration, minResTime time.Duration, errCount int64, plots *[]ui.Drawable) {
+func drawTable(title string, pos widgetPosition, avgResTime time.Duration, maxResTime time.Duration, minResTime time.Duration, errCount int64, plots *[]ui.Drawable) {
 	t := widgets.NewTable()
 	t.Title = title
 	t.Rows = [][]string{
@@ -105,7 +112,7 @@ func drawTable(title string, x1 int, y1 int, x2 int, y2 int, avgResTime time.Dur
 		},
 	}
 	t.RowSeparator = true
-	t.SetRect(x1, y1, x2, y2)
+	t.SetRect(pos.x1, pos.y1, pos.x2, pos.y2)
 	t.RowStyles[0] = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
 	t.TextAlignment = ui.AlignCenter
 
@@ -130,7 +137,14 @@ func DrawDashboard() {
 	durationTicker := time.NewTicker(1 * time.Second)
 	defer durationTicker.Stop()
 
-	drawGauge("Test Duration", duration, *durationTicker, width, margin, durationGaugeHeight, &outputs)
+	durationGaugePos := widgetPosition{
+		x1: 0,
+		y1: 0,
+		x2: 3*width + 2*margin,
+		y2: 3,
+	}
+
+	drawGauge("Test Duration", durationGaugePos, duration, *durationTicker, &outputs)
 
 	ticker := time.NewTicker(200 * time.Millisecond)
 
@@ -155,13 +169,41 @@ func DrawDashboard() {
 		}
 	}()
 
-	drawLineGraph("Responses times", 0, durationGaugeHeight+margin, width, durationGaugeHeight+margin+height, resTimeChan, &outputs)
+	resTimeGraphPos := widgetPosition{
+		x1: 0,
+		y1: durationGaugeHeight + margin,
+		x2: width,
+		y2: durationGaugeHeight + margin + height,
+	}
 
-	drawLineGraph("Requests per second", width+margin, durationGaugeHeight+margin, 2*width+margin, durationGaugeHeight+margin+height, reqPSChan, &outputs)
+	drawLineGraph("Responses times", resTimeGraphPos, resTimeChan, &outputs)
 
-	drawLineGraph("Responses per second", 2*width+2*margin, durationGaugeHeight+margin, 3*width+2*margin, durationGaugeHeight+margin+height, resPSChan, &outputs)
+	reqPSGraphPos := widgetPosition{
+		x1: width + margin,
+		y1: durationGaugeHeight + margin,
+		x2: 2*width + margin,
+		y2: durationGaugeHeight + margin + height,
+	}
 
-	drawTable("Response Stats", 0, 4*(durationGaugeHeight+margin)+margin, 3*width+2*margin, 4*(durationGaugeHeight+margin)+margin+5, 14*time.Millisecond, 18*time.Millisecond, 10*time.Millisecond, 42, &outputs)
+	drawLineGraph("Requests per second", reqPSGraphPos, reqPSChan, &outputs)
+
+	resPSGraphPos := widgetPosition{
+		x1: 2*width + 2*margin,
+		y1: durationGaugeHeight + margin,
+		x2: 3*width + 2*margin,
+		y2: durationGaugeHeight + margin + height,
+	}
+
+	drawLineGraph("Responses per second", resPSGraphPos, resPSChan, &outputs)
+
+	resStatTablePos := widgetPosition{
+		x1: 0,
+		y1: 4*(durationGaugeHeight+margin) + margin,
+		x2: 3*width + 2*margin,
+		y2: 4*(durationGaugeHeight+margin) + margin + 5,
+	}
+
+	drawTable("Response Stats", resStatTablePos, 14*time.Millisecond, 18*time.Millisecond, 10*time.Millisecond, 42, &outputs)
 
 	uiEvents := ui.PollEvents()
 	for {
