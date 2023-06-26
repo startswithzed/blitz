@@ -96,7 +96,6 @@ func (r *Runner) initCounters() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("INFO:  exiting request count goroutine")
 				return
 			case _, ok := <-r.reqCountChan:
 				if !ok {
@@ -115,7 +114,6 @@ func (r *Runner) initCounters() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("INFO:  exiting response count goroutine")
 				return
 			case _, ok := <-r.resCountChan:
 				if !ok {
@@ -135,15 +133,13 @@ func (r *Runner) getRPS(ticker *time.Ticker) {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("INFO:  exiting RPS goroutine")
 				return
 			case _, ok := <-ticker.C:
 				if !ok {
 					return
 				}
-				request := atomic.SwapUint64(&r.reqCount, 0)
-				response := atomic.SwapUint64(&r.resCount, 0)
-				log.Printf("INFO:  requests per second: %d, responses per second: %d\n", request, response)
+				atomic.SwapUint64(&r.reqCount, 0)
+				atomic.SwapUint64(&r.resCount, 0) // TODO: send these to a channel to update UI
 			}
 		}
 	}(r.ctx)
@@ -158,7 +154,6 @@ func (r *Runner) countErrors() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("INFO:  exiting error count goroutine")
 				return
 			case _, ok := <-r.errorStream:
 				if !ok {
