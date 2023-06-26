@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 
 	ui "github.com/gizak/termui/v3"
@@ -14,6 +15,8 @@ type Dashboard struct {
 	testDuration   time.Duration
 	durationTicker time.Ticker
 	outputs        *[]ui.Drawable
+	uiMutex        sync.Mutex
+	refreshReqChan chan struct{}
 }
 
 type widgetPosition struct {
@@ -28,6 +31,8 @@ func NewDashboard(testDuration time.Duration, durationTicker time.Ticker) *Dashb
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
 		outputs:        &[]ui.Drawable{},
+		uiMutex:        sync.Mutex{},
+		refreshReqChan: make(chan struct{}, 1), //TODO: close this channel gracefully
 	}
 }
 
@@ -52,6 +57,25 @@ func formatDuration(d time.Duration) string {
 //
 //	return str
 //}
+
+func (d *Dashboard) refreshUI() {
+	d.uiMutex.Lock()
+	defer d.uiMutex.Unlock()
+
+	ui.Clear()
+	ui.Render(*d.outputs...)
+}
+
+func (d *Dashboard) launchRefreshWorker() {
+	go func() {
+		for {
+			select {
+			case <-d.refreshReqChan:
+				d.refreshUI()
+			}
+		}
+	}()
+}
 
 func drawLineGraph(title string, pos widgetPosition, dataChan chan float64, plots *[]ui.Drawable) {
 	dataArr := make([][]float64, 1)
@@ -115,8 +139,10 @@ func (d *Dashboard) drawGauge(title string, pos widgetPosition) {
 
 				g.Percent = percent
 				g.Label = fmt.Sprintf("%v%% %v/%v", g.Percent, formatDuration(elapsed), formatDuration(d.testDuration))
-				ui.Clear()
-				ui.Render(*d.outputs...)
+				select {
+				case d.refreshReqChan <- struct{}{}:
+				default:
+				}
 			}
 		}
 	}()
@@ -193,8 +219,7 @@ func (d *Dashboard) DrawDashboard() {
 	const TableHeight = 5
 	const LogsHeight = 12
 
-	//durationTicker := time.NewTicker(1 * time.Second)
-	//defer durationTicker.Stop()
+	d.launchRefreshWorker()
 
 	durationGaugePos := widgetPosition{
 		x1: 0,
