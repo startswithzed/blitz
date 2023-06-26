@@ -127,10 +127,11 @@ func DrawDashboard() {
 
 	var outputs []ui.Drawable
 
-	width := 45
-	margin := 2
-	durationGaugeHeight := 3
-	height := width / 3
+	const MaxWidth = 90
+
+	const GaugeHeight = 3
+	const GraphHeight = 10
+	const TableHeight = 5
 
 	duration := 1 * time.Minute
 
@@ -140,8 +141,8 @@ func DrawDashboard() {
 	durationGaugePos := widgetPosition{
 		x1: 0,
 		y1: 0,
-		x2: 3*width + 2*margin,
-		y2: 3,
+		x2: MaxWidth,
+		y2: GaugeHeight,
 	}
 
 	drawGauge("Test Duration", durationGaugePos, duration, *durationTicker, &outputs)
@@ -171,36 +172,36 @@ func DrawDashboard() {
 
 	resTimeGraphPos := widgetPosition{
 		x1: 0,
-		y1: durationGaugeHeight + margin,
-		x2: width,
-		y2: durationGaugeHeight + margin + height,
+		y1: GaugeHeight,
+		x2: MaxWidth / 3,
+		y2: GaugeHeight + GraphHeight,
 	}
 
 	drawLineGraph("Responses times", resTimeGraphPos, resTimeChan, &outputs)
 
 	reqPSGraphPos := widgetPosition{
-		x1: width + margin,
-		y1: durationGaugeHeight + margin,
-		x2: 2*width + margin,
-		y2: durationGaugeHeight + margin + height,
+		x1: MaxWidth / 3,
+		y1: GaugeHeight,
+		x2: 2 * (MaxWidth / 3),
+		y2: GaugeHeight + GraphHeight,
 	}
 
 	drawLineGraph("Requests per second", reqPSGraphPos, reqPSChan, &outputs)
 
 	resPSGraphPos := widgetPosition{
-		x1: 2*width + 2*margin,
-		y1: durationGaugeHeight + margin,
-		x2: 3*width + 2*margin,
-		y2: durationGaugeHeight + margin + height,
+		x1: 2 * (MaxWidth / 3),
+		y1: GaugeHeight,
+		x2: 3 * (MaxWidth / 3),
+		y2: GaugeHeight + GraphHeight,
 	}
 
 	drawLineGraph("Responses per second", resPSGraphPos, resPSChan, &outputs)
 
 	resStatTablePos := widgetPosition{
 		x1: 0,
-		y1: 4*(durationGaugeHeight+margin) + margin,
-		x2: 3*width + 2*margin,
-		y2: 4*(durationGaugeHeight+margin) + margin + 5,
+		y1: GaugeHeight + GraphHeight,
+		x2: MaxWidth,
+		y2: GaugeHeight + GraphHeight + TableHeight,
 	}
 
 	drawTable("Response Stats", resStatTablePos, 14*time.Millisecond, 18*time.Millisecond, 10*time.Millisecond, 42, &outputs)
