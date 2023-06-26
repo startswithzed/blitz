@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"context"
-	"log"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -111,14 +110,13 @@ func (c *client) start() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("INFO: shutting down client goroutine")
 				return
 			default:
 				request := c.requests[rand.Intn(len(c.requests))]
 
 				resp, err := c.sendRequest(request)
 				if err != nil {
-					log.Println(err) // TODO: return this error in an error stream
+					// TODO: return this error in an error stream
 				}
 
 				if resp.StatusCode >= 300 || resp.StatusCode < 200 {
