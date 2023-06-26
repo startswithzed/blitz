@@ -171,7 +171,8 @@ func (r *Runner) LoadTest() {
 
 	r.validateRequests()
 
-	duration := time.Duration(r.config.Duration) * time.Minute
+	//duration := time.Duration(r.config.Duration) * time.Minute
+	duration := 10 * time.Second // TODO: change this back to user defined duration
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
 	r.ctx = ctx
