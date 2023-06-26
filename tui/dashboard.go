@@ -53,18 +53,18 @@ func drawLineGraph(title string, x1 int, y1 int, x2 int, y2 int, dataChan chan f
 func drawGauge(title string, duration time.Duration, ticker time.Ticker, width int, margin int, height int, plots *[]ui.Drawable) {
 	startTime := time.Now()
 	endTime := startTime.Add(duration)
-	percent := 0
 
 	g := widgets.NewGauge()
 	g.Title = title
 	g.SetRect(0, 0, 3*width+2*margin, height)
 	g.BarColor = ui.ColorGreen
 	g.TitleStyle.Fg = ui.ColorCyan
-	g.Percent = percent
+	g.Percent = 0
 
 	*plots = append(*plots, g)
 
-	go func(percent *int) {
+	go func() {
+		percent := 0
 		for {
 			select {
 			case now := <-ticker.C:
@@ -75,15 +75,15 @@ func drawGauge(title string, duration time.Duration, ticker time.Ticker, width i
 					break
 				}
 
-				*percent = int(elapsed * 100 / duration)
+				percent = int(elapsed * 100 / duration)
 
-				g.Percent = *percent
+				g.Percent = percent
 				g.Label = fmt.Sprintf("%v%% %v/%v", g.Percent, formatDuration(elapsed), formatDuration(duration))
 				ui.Clear()
 				ui.Render(*plots...)
 			}
 		}
-	}(&percent)
+	}()
 }
 
 func DrawDashboard() {
