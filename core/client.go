@@ -29,7 +29,7 @@ type client struct {
 	wg           *sync.WaitGroup
 	reqCountChan chan<- struct{}
 	resCountChan chan<- struct{}
-	errorStream  chan<- ErrorLog
+	errorStream  chan<- interface{}
 }
 
 func newClient(
@@ -38,6 +38,7 @@ func newClient(
 	wg *sync.WaitGroup,
 	reqCountChan chan struct{},
 	resCountChan chan struct{},
+	errorStream chan<- interface{},
 ) *client {
 	return &client{
 		requests:     reqs,
@@ -45,6 +46,7 @@ func newClient(
 		wg:           wg,
 		reqCountChan: reqCountChan,
 		resCountChan: resCountChan,
+		errorStream:  errorStream,
 	}
 }
 
@@ -116,7 +118,8 @@ func (c *client) start() {
 
 				resp, err := c.sendRequest(request)
 				if err != nil {
-					// TODO: return this error in an error stream
+					c.errorStream <- err
+					continue
 				}
 
 				if resp.StatusCode >= 300 || resp.StatusCode < 200 {
