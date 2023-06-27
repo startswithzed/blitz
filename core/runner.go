@@ -23,7 +23,7 @@ type Runner struct {
 	errorCount   uint64
 	reqCountChan chan struct{}
 	resCountChan chan struct{}
-	errorStream  chan ErrorLog
+	errorStream  chan interface{}
 	reqPS        chan uint64
 	resPS        chan uint64
 	done         chan struct{}
@@ -39,7 +39,7 @@ func NewRunner(config Config, ticker *time.Ticker) *Runner {
 		wg:           &sync.WaitGroup{},
 		reqCountChan: make(chan struct{}, config.NumClients),
 		resCountChan: make(chan struct{}, config.NumClients),
-		errorStream:  make(chan ErrorLog),
+		errorStream:  make(chan interface{}, config.NumClients),
 		reqPS:        make(chan uint64),
 		resPS:        make(chan uint64),
 		done:         make(chan struct{}),
@@ -176,7 +176,7 @@ func (r *Runner) countErrors() {
 	}(r.ctx)
 }
 
-func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64) {
+func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan interface{}) {
 	r.getRequestSpec()
 
 	r.validateRequests()
@@ -190,7 +190,7 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64) {
 	r.initCounters()
 
 	for i := 0; i < r.config.NumClients; i++ {
-		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan)
+		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan, r.errorStream)
 		client.start()
 	}
 
@@ -200,5 +200,5 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64) {
 		close(r.done)
 	}()
 
-	return r.done, r.reqPS, r.resPS
+	return r.done, r.reqPS, r.resPS, r.errorStream
 }

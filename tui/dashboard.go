@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/startswithzed/web-ruckus/core"
 	"log"
 	"math/rand"
 	"strconv"
@@ -20,6 +21,7 @@ type Dashboard struct {
 	refreshReqChan chan struct{}
 	reqPS          chan uint64
 	resPS          chan uint64
+	errorStream    <-chan interface{}
 }
 
 type widgetPosition struct {
@@ -29,7 +31,7 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64) *Dashboard {
+func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, errorStream <-chan interface{}) *Dashboard {
 	return &Dashboard{
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
@@ -38,6 +40,7 @@ func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS
 		refreshReqChan: make(chan struct{}, 1), //TODO: close this channel gracefully
 		reqPS:          reqPS,
 		resPS:          resPS,
+		errorStream:    errorStream,
 	}
 }
 
@@ -48,20 +51,20 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 }
 
-//func logsToString(logs []interface{}) string {
-//	str := ""
-//	for _, errLog := range logs {
-//		switch l := errLog.(type) {
-//		case core.ErrorLog:
-//			str += fmt.Sprintf("%d  [%d](fg:red)  %s  [%s](fg:blue)\n", l.Timestamp, l.StatusCode, l.Verb, l.URL)
-//		case error:
-//			str += fmt.Sprintf("[%s](fg:red)\n", l)
-//		default:
-//		}
-//	}
-//
-//	return str
-//}
+func logsToString(logs []interface{}) string {
+	str := ""
+	for _, errLog := range logs {
+		switch l := errLog.(type) {
+		case core.ErrorLog:
+			str += fmt.Sprintf("%d  [%d](fg:red)  %s  [%s](fg:blue)\n", l.Timestamp, l.StatusCode, l.Verb, l.URL)
+		case error:
+			str += fmt.Sprintf("[%s](fg:red)\n", l)
+		default:
+		}
+	}
+
+	return str
+}
 
 func uint64ToFloat64Chan(in <-chan uint64) <-chan float64 {
 	out := make(chan float64)
@@ -203,38 +206,40 @@ func drawTable(title string, pos widgetPosition, avgResTime time.Duration, maxRe
 	*plots = append(*plots, t)
 }
 
-//func drawLogs(title string, pos widgetPosition, errStream chan interface{}, plots *[]ui.Drawable) {
-//	logs := make([]interface{}, 11)
-//
-//	p := widgets.NewParagraph()
-//	p.Title = title
-//	p.Text = logsToString(logs)
-//	p.SetRect(pos.x1, pos.y1, pos.x2, pos.y2)
-//
-//	*plots = append(*plots, p)
-//
-//	go func() {
-//		for {
-//			select {
-//			case val, ok := <-errStream:
-//				if !ok {
-//					return
-//				}
-//				switch l := val.(type) {
-//				case core.ErrorLog, error:
-//					logs = append(logs, l)
-//					if len(logs) > 10 {
-//						logs = logs[1:]
-//					}
-//					p.Text = logsToString(logs)
-//					ui.Clear()
-//					ui.Render(*plots...)
-//				default:
-//				}
-//			}
-//		}
-//	}()
-//}
+func (d *Dashboard) drawLogs(title string, pos widgetPosition) {
+	logs := make([]interface{}, 11)
+
+	p := widgets.NewParagraph()
+	p.Title = title
+	p.Text = logsToString(logs)
+	p.SetRect(pos.x1, pos.y1, pos.x2, pos.y2)
+
+	*d.outputs = append(*d.outputs, p)
+
+	go func() {
+		for {
+			select {
+			case val, ok := <-d.errorStream:
+				if !ok {
+					return
+				}
+				switch l := val.(type) {
+				case core.ErrorLog, error:
+					logs = append(logs, l)
+					if len(logs) > 10 {
+						logs = logs[1:]
+					}
+					p.Text = logsToString(logs)
+					select {
+					case d.refreshReqChan <- struct{}{}:
+					default:
+					}
+				default:
+				}
+			}
+		}
+	}()
+}
 
 func (d *Dashboard) DrawDashboard() {
 	if err := ui.Init(); err != nil {
@@ -265,22 +270,12 @@ func (d *Dashboard) DrawDashboard() {
 	resTimeChan := make(chan float64)
 	defer close(resTimeChan) // TODO: check for graceful exit
 
-	//errStream := make(chan interface{})
-	//defer close(errStream)
-
 	go func() {
 		rand.Seed(time.Now().UnixNano())
 		for {
 			select {
 			case <-ticker.C:
 				resTimeChan <- float64(rand.Intn(20))
-				//idx := rand.Intn(2)
-				//switch idx {
-				//case 0:
-				//	errStream <- core.ErrorLog{Timestamp: 1687770075, Verb: "GET", URL: "http://dummywebserver.startswithzed.repl.co", StatusCode: 501}
-				//case 1:
-				//	errStream <- errors.New("something went wrong")
-				//}
 			}
 		}
 	}()
@@ -316,14 +311,14 @@ func (d *Dashboard) DrawDashboard() {
 	//	y2: GaugeHeight + GraphHeight + TableHeight,
 	//}
 	//drawTable("Response Stats", resStatTablePos, 14*time.Millisecond, 18*time.Millisecond, 10*time.Millisecond, 42, &outputs)
-	//
-	//errorLogsPos := widgetPosition{
-	//	x1: 0,
-	//	y1: GaugeHeight + GraphHeight + TableHeight,
-	//	x2: MaxWidth,
-	//	y2: GaugeHeight + GraphHeight + TableHeight + LogsHeight,
-	//}
-	//drawLogs("Error Logs", errorLogsPos, errStream, &outputs)
+
+	errorLogsPos := widgetPosition{
+		x1: 0,
+		y1: GaugeHeight + GraphHeight + TableHeight,
+		x2: MaxWidth,
+		y2: GaugeHeight + GraphHeight + TableHeight + LogsHeight,
+	}
+	d.drawLogs("Error Logs", errorLogsPos)
 
 	uiEvents := ui.PollEvents()
 	for {
