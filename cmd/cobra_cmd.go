@@ -3,6 +3,8 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 	"github.com/startswithzed/web-ruckus/core"
+	"github.com/startswithzed/web-ruckus/tui"
+	"time"
 )
 
 var config core.Config
@@ -13,8 +15,16 @@ func createRootCmd() *cobra.Command {
 		Use:  "webruckus --req-spec /path/to/spec.json --duration 60 --num-clients 10",
 		Long: "Load test your web server.",
 		Run: func(cmd *cobra.Command, args []string) {
-			runner := core.NewRunner(config)
-			runner.LoadTest()
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+
+			runner := core.NewRunner(config, ticker)
+			done := runner.LoadTest()
+
+			dashboard := tui.NewDashboard(config.Duration, ticker)
+			dashboard.DrawDashboard()
+
+			<-done // wait for the done channel to close before exiting the program
 		},
 	}
 
