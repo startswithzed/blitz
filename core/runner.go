@@ -174,8 +174,7 @@ func (r *Runner) LoadTest() chan struct{} {
 	r.validateRequests()
 
 	duration := r.config.Duration
-	ctx, cancel := context.WithTimeout(context.Background(), duration)
-	defer cancel()
+	ctx, _ := context.WithTimeout(context.Background(), duration)
 	r.ctx = ctx
 
 	r.getRPS(r.ticker)
