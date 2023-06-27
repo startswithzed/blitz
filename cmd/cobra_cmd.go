@@ -19,7 +19,7 @@ func createRootCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&config.ReqSpecPath, "req-spec", "r", "", "Path to the request specification json file")
-	cmd.Flags().IntVarP(&config.Duration, "duration", "d", 1, "Duration of the test in minutes")
+	cmd.Flags().DurationVarP(&config.Duration, "duration", "d", time.Minute, "Duration of the test in minutes")
 	cmd.Flags().IntVarP(&config.NumClients, "num-clients", "c", 1, "Number of concurrent clients sending requests to the server")
 	cmd.Flags().StringVarP(&config.MetricsEndpoint, "metrics-endpoint", "m", "", "Server metrics endpoint (optional)")
 
