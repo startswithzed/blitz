@@ -24,10 +24,14 @@ type Runner struct {
 	reqCountChan chan struct{}
 	resCountChan chan struct{}
 	errorStream  chan ErrorLog
+	reqPS        chan uint64
+	resPS        chan uint64
 	done         chan struct{}
 }
 
 func NewRunner(config Config, ticker *time.Ticker) *Runner {
+
+	// TODO: Check for closing of all channels
 
 	return &Runner{
 		config:       config,
@@ -36,6 +40,8 @@ func NewRunner(config Config, ticker *time.Ticker) *Runner {
 		reqCountChan: make(chan struct{}, config.NumClients),
 		resCountChan: make(chan struct{}, config.NumClients),
 		errorStream:  make(chan ErrorLog),
+		reqPS:        make(chan uint64),
+		resPS:        make(chan uint64),
 		done:         make(chan struct{}),
 	}
 }
@@ -141,8 +147,10 @@ func (r *Runner) getRPS(ticker *time.Ticker) {
 				if !ok {
 					return
 				}
-				atomic.SwapUint64(&r.reqCount, 0)
-				atomic.SwapUint64(&r.resCount, 0) // TODO: send these to a channel to update UI
+				reqC := atomic.SwapUint64(&r.reqCount, 0)
+				r.reqPS <- reqC
+				resC := atomic.SwapUint64(&r.resCount, 0)
+				r.resPS <- resC
 			}
 		}
 	}(r.ctx)
@@ -168,14 +176,13 @@ func (r *Runner) countErrors() {
 	}(r.ctx)
 }
 
-func (r *Runner) LoadTest() chan struct{} {
+func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64) {
 	r.getRequestSpec()
 
 	r.validateRequests()
 
 	duration := r.config.Duration
-	ctx, cancel := context.WithTimeout(context.Background(), duration)
-	defer cancel()
+	ctx, _ := context.WithTimeout(context.Background(), duration)
 	r.ctx = ctx
 
 	r.getRPS(r.ticker)
@@ -193,5 +200,5 @@ func (r *Runner) LoadTest() chan struct{} {
 		close(r.done)
 	}()
 
-	return r.done
+	return r.done, r.reqPS, r.resPS
 }

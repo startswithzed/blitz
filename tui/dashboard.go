@@ -18,6 +18,8 @@ type Dashboard struct {
 	outputs        *[]ui.Drawable
 	uiMutex        sync.Mutex
 	refreshReqChan chan struct{}
+	reqPS          chan uint64
+	resPS          chan uint64
 }
 
 type widgetPosition struct {
@@ -27,13 +29,15 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker) *Dashboard {
+func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64) *Dashboard {
 	return &Dashboard{
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
 		outputs:        &[]ui.Drawable{},
 		uiMutex:        sync.Mutex{},
 		refreshReqChan: make(chan struct{}, 1), //TODO: close this channel gracefully
+		reqPS:          reqPS,
+		resPS:          resPS,
 	}
 }
 
@@ -59,6 +63,25 @@ func formatDuration(d time.Duration) string {
 //	return str
 //}
 
+func uint64ToFloat64Chan(in <-chan uint64) <-chan float64 {
+	out := make(chan float64)
+
+	go func() {
+		for {
+			select {
+			case val, ok := <-in:
+				if !ok {
+					close(out)
+					return
+				}
+				out <- float64(val)
+			}
+		}
+	}()
+
+	return out
+}
+
 func (d *Dashboard) refreshUI() {
 	d.uiMutex.Lock()
 	defer d.uiMutex.Unlock()
@@ -81,7 +104,7 @@ func (d *Dashboard) launchRefreshWorker() {
 	}()
 }
 
-func (d *Dashboard) drawLineGraph(title string, pos widgetPosition, dataChan chan float64) {
+func (d *Dashboard) drawLineGraph(title string, pos widgetPosition, dataChan <-chan float64) {
 	dataArr := make([][]float64, 1)
 	dataArr[0] = make([]float64, pos.x2-pos.x1)
 	var data []float64
@@ -92,6 +115,7 @@ func (d *Dashboard) drawLineGraph(title string, pos widgetPosition, dataChan cha
 	p.SetRect(pos.x1, pos.y1, pos.x2, pos.y2)
 	p.AxesColor = ui.ColorBlue
 	p.LineColors[0] = ui.ColorMagenta
+	p.DrawDirection = widgets.DrawRight
 
 	*d.outputs = append(*d.outputs, p)
 
@@ -241,12 +265,6 @@ func (d *Dashboard) DrawDashboard() {
 	resTimeChan := make(chan float64)
 	defer close(resTimeChan) // TODO: check for graceful exit
 
-	reqPSChan := make(chan float64)
-	defer close(reqPSChan)
-
-	resPSChan := make(chan float64)
-	defer close(resPSChan)
-
 	//errStream := make(chan interface{})
 	//defer close(errStream)
 
@@ -256,8 +274,6 @@ func (d *Dashboard) DrawDashboard() {
 			select {
 			case <-ticker.C:
 				resTimeChan <- float64(rand.Intn(20))
-				reqPSChan <- float64(rand.Intn(50))
-				resPSChan <- float64(rand.Intn(50))
 				//idx := rand.Intn(2)
 				//switch idx {
 				//case 0:
@@ -283,7 +299,7 @@ func (d *Dashboard) DrawDashboard() {
 		x2: 2 * (MaxWidth / 3),
 		y2: GaugeHeight + GraphHeight,
 	}
-	d.drawLineGraph("Requests per second", reqPSGraphPos, reqPSChan)
+	d.drawLineGraph("Requests per second", reqPSGraphPos, uint64ToFloat64Chan(d.reqPS))
 
 	resPSGraphPos := widgetPosition{
 		x1: 2 * (MaxWidth / 3),
@@ -291,7 +307,7 @@ func (d *Dashboard) DrawDashboard() {
 		x2: 3 * (MaxWidth / 3),
 		y2: GaugeHeight + GraphHeight,
 	}
-	d.drawLineGraph("Responses per second", resPSGraphPos, resPSChan)
+	d.drawLineGraph("Responses per second", resPSGraphPos, uint64ToFloat64Chan(d.resPS))
 
 	//resStatTablePos := widgetPosition{
 	//	x1: 0,

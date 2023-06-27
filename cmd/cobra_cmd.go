@@ -19,9 +19,9 @@ func createRootCmd() *cobra.Command {
 			defer ticker.Stop()
 
 			runner := core.NewRunner(config, ticker)
-			done := runner.LoadTest()
+			done, reqPS, resPS := runner.LoadTest()
 
-			dashboard := tui.NewDashboard(config.Duration, ticker)
+			dashboard := tui.NewDashboard(config.Duration, ticker, reqPS, resPS)
 			dashboard.DrawDashboard()
 
 			<-done // wait for the done channel to close before exiting the program
