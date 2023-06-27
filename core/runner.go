@@ -41,7 +41,6 @@ func NewRunner(config Config, ticker *time.Ticker) *Runner {
 }
 
 // TODO: Error handling logic should be extracted and left to the main function
-// TODO: Use wait groups to handle goroutine exit
 
 func (r *Runner) getRequestSpec() {
 	ext := filepath.Ext(r.config.ReqSpecPath)
