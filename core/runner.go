@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"github.com/startswithzed/web-ruckus/tui"
 	"io"
 	"log"
 	"os"
@@ -15,6 +14,7 @@ import (
 
 type Runner struct {
 	config       Config
+	ticker       *time.Ticker
 	requests     []*Request
 	ctx          context.Context
 	wg           *sync.WaitGroup
@@ -24,21 +24,23 @@ type Runner struct {
 	reqCountChan chan struct{}
 	resCountChan chan struct{}
 	errorStream  chan ErrorLog
+	done         chan struct{}
 }
 
-func NewRunner(config Config) *Runner {
+func NewRunner(config Config, ticker *time.Ticker) *Runner {
 
 	return &Runner{
 		config:       config,
+		ticker:       ticker,
 		wg:           &sync.WaitGroup{},
 		reqCountChan: make(chan struct{}, config.NumClients),
 		resCountChan: make(chan struct{}, config.NumClients),
 		errorStream:  make(chan ErrorLog),
+		done:         make(chan struct{}),
 	}
 }
 
 // TODO: Error handling logic should be extracted and left to the main function
-// TODO: Use wait groups to handle goroutine exit
 
 func (r *Runner) getRequestSpec() {
 	ext := filepath.Ext(r.config.ReqSpecPath)
@@ -166,20 +168,17 @@ func (r *Runner) countErrors() {
 	}(r.ctx)
 }
 
-func (r *Runner) LoadTest() {
+func (r *Runner) LoadTest() chan struct{} {
 	r.getRequestSpec()
 
 	r.validateRequests()
 
-	//duration := time.Duration(r.config.Duration) * time.Minute
-	duration := 10 * time.Second // TODO: change this back to user defined duration
+	duration := r.config.Duration
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
 	r.ctx = ctx
 
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	r.getRPS(ticker)
+	r.getRPS(r.ticker)
 
 	r.initCounters()
 
@@ -188,10 +187,11 @@ func (r *Runner) LoadTest() {
 		client.start()
 	}
 
-	dashboard := tui.NewDashboard(duration, *ticker)
-	dashboard.DrawDashboard()
+	// wait for all the goroutines to exit
+	go func() {
+		r.wg.Wait()
+		close(r.done)
+	}()
 
-	r.wg.Wait()
-
-	log.Printf("INFO:  error count: %d\n", r.errorCount)
+	return r.done
 }

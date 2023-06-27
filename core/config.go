@@ -1,8 +1,10 @@
 package core
 
+import "time"
+
 type Config struct {
 	ReqSpecPath     string
-	Duration        int
+	Duration        time.Duration
 	NumClients      int
 	MetricsEndpoint string
 }

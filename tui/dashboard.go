@@ -14,7 +14,7 @@ import (
 
 type Dashboard struct {
 	testDuration   time.Duration
-	durationTicker time.Ticker
+	durationTicker *time.Ticker
 	outputs        *[]ui.Drawable
 	uiMutex        sync.Mutex
 	refreshReqChan chan struct{}
@@ -27,7 +27,7 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker time.Ticker) *Dashboard {
+func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker) *Dashboard {
 	return &Dashboard{
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
@@ -138,7 +138,7 @@ func (d *Dashboard) drawGauge(title string, pos widgetPosition) {
 				remaining := endTime.Sub(now)
 
 				if remaining <= 0 {
-					break
+					return // TODO: Cancel all other goroutines
 				}
 
 				percent = int(elapsed * 100 / d.testDuration)
