@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"github.com/startswithzed/web-ruckus/core"
 	"log"
@@ -24,6 +25,7 @@ type Dashboard struct {
 	resStats       chan core.ResponseTimeStats
 	errorStream    <-chan interface{}
 	errCountChan   chan uint64
+	cancel         context.CancelFunc
 }
 
 type widgetPosition struct {
@@ -33,7 +35,7 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, resTimes chan uint64, resStats chan core.ResponseTimeStats, errorStream <-chan interface{}, errCountChan chan uint64) *Dashboard {
+func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, resTimes chan uint64, resStats chan core.ResponseTimeStats, errorStream <-chan interface{}, errCountChan chan uint64, cancel context.CancelFunc) *Dashboard {
 	return &Dashboard{
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
@@ -46,6 +48,7 @@ func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS
 		resStats:       resStats,
 		errorStream:    errorStream,
 		errCountChan:   errCountChan,
+		cancel:         cancel,
 	}
 }
 
@@ -345,6 +348,7 @@ func (d *Dashboard) DrawDashboard() {
 		e := <-uiEvents
 		switch e.ID {
 		case "q", "<C-c>":
+			d.cancel()
 			return
 		}
 	}

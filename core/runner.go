@@ -253,13 +253,13 @@ func (r *Runner) getResponseTimesStats() {
 	}(r.ctx)
 }
 
-func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan uint64, chan ResponseTimeStats, chan interface{}, chan uint64) {
+func (r *Runner) LoadTest() (chan struct{}, context.CancelFunc, chan uint64, chan uint64, chan uint64, chan ResponseTimeStats, chan interface{}, chan uint64) {
 	r.getRequestSpec()
 
 	r.validateRequests()
 
 	duration := r.config.Duration
-	ctx, _ := context.WithTimeout(context.Background(), duration)
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	r.ctx = ctx
 
 	r.getRPS(r.ticker)
@@ -279,5 +279,5 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan uint6
 		close(r.done)
 	}()
 
-	return r.done, r.reqPS, r.resPS, r.resTimesOut, r.resStats, r.errOut, r.errCountChan
+	return r.done, cancel, r.reqPS, r.resPS, r.resTimesOut, r.resStats, r.errOut, r.errCountChan
 }
