@@ -29,6 +29,7 @@ type client struct {
 	wg           *sync.WaitGroup
 	reqCountChan chan<- struct{}
 	resCountChan chan<- struct{}
+	resTimes     chan<- uint64
 	errorStream  chan<- interface{}
 }
 
@@ -38,6 +39,7 @@ func newClient(
 	wg *sync.WaitGroup,
 	reqCountChan chan struct{},
 	resCountChan chan struct{},
+	resTimes chan<- uint64,
 	errorStream chan<- interface{},
 ) *client {
 	return &client{
@@ -46,6 +48,7 @@ func newClient(
 		wg:           wg,
 		reqCountChan: reqCountChan,
 		resCountChan: resCountChan,
+		resTimes:     resTimes,
 		errorStream:  errorStream,
 	}
 }
@@ -129,8 +132,11 @@ func (c *client) start() {
 						URL:        request.URL,
 						StatusCode: resp.StatusCode,
 					}
+					c.resTimes <- uint64(resp.ResponseTime)
 					continue
 				}
+
+				c.resTimes <- uint64(resp.ResponseTime)
 			}
 		}
 	}(c.ctx)
