@@ -21,6 +21,7 @@ type Dashboard struct {
 	reqPS          chan uint64
 	resPS          chan uint64
 	resTimes       chan uint64
+	resStats       chan core.ResponseTimeStats
 	errorStream    <-chan interface{}
 	errCountChan   chan uint64
 }
@@ -32,7 +33,7 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, resTimes chan uint64, errorStream <-chan interface{}, errCountChan chan uint64) *Dashboard {
+func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, resTimes chan uint64, resStats chan core.ResponseTimeStats, errorStream <-chan interface{}, errCountChan chan uint64) *Dashboard {
 	return &Dashboard{
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
@@ -42,6 +43,7 @@ func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS
 		reqPS:          reqPS,
 		resPS:          resPS,
 		resTimes:       resTimes,
+		resStats:       resStats,
 		errorStream:    errorStream,
 		errCountChan:   errCountChan,
 	}
@@ -220,6 +222,18 @@ func (d *Dashboard) drawTable(title string, pos widgetPosition) {
 				case d.refreshReqChan <- struct{}{}:
 				default:
 				}
+			case stats, ok := <-d.resStats:
+				if !ok {
+					return
+				}
+				t.Rows[1][0] = strconv.FormatUint(stats.AverageTime, 10)
+				t.Rows[1][1] = strconv.FormatUint(stats.MaxTime, 10)
+				t.Rows[1][2] = strconv.FormatUint(stats.MinTime, 10)
+				select {
+				case d.refreshReqChan <- struct{}{}:
+				default:
+				}
+			default:
 			}
 		}
 	}()

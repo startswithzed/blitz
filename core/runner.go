@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,10 +28,18 @@ type Runner struct {
 	errIn        chan interface{}
 	errOut       chan interface{}
 	errCountChan chan uint64
-	resTimes     chan uint64
+	resTimesIn   chan uint64
+	resTimesOut  chan uint64
+	resStats     chan ResponseTimeStats
 	reqPS        chan uint64
 	resPS        chan uint64
 	done         chan struct{}
+}
+
+type ResponseTimeStats struct {
+	AverageTime uint64
+	MaxTime     uint64
+	MinTime     uint64
 }
 
 func NewRunner(config Config, ticker *time.Ticker) *Runner {
@@ -45,7 +55,9 @@ func NewRunner(config Config, ticker *time.Ticker) *Runner {
 		errIn:        make(chan interface{}, config.NumClients),
 		errOut:       make(chan interface{}, config.NumClients),
 		errCountChan: make(chan uint64),
-		resTimes:     make(chan uint64, config.NumClients),
+		resTimesIn:   make(chan uint64, config.NumClients),
+		resTimesOut:  make(chan uint64, config.NumClients),
+		resStats:     make(chan ResponseTimeStats, config.NumClients),
 		reqPS:        make(chan uint64),
 		resPS:        make(chan uint64),
 		done:         make(chan struct{}),
@@ -185,7 +197,63 @@ func (r *Runner) getRPS(ticker *time.Ticker) {
 	}(r.ctx)
 }
 
-func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan uint64, chan interface{}, chan uint64) {
+func (r *Runner) getResponseTimesStats() {
+	r.wg.Add(1)
+
+	go func(ctx context.Context) {
+		defer r.wg.Done()
+
+		var numRes uint64
+		var resTimesSum uint64
+		var maxResTime uint64
+		var minResTime uint64 = math.MaxUint64
+		var avgResTime uint64
+		stats := ResponseTimeStats{
+			AverageTime: avgResTime,
+			MaxTime:     maxResTime,
+			MinTime:     minResTime,
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case resTime, ok := <-r.resTimesIn:
+				if !ok {
+					return
+				}
+
+				r.resTimesOut <- resTime
+
+				atomic.AddUint64(&numRes, 1)
+				atomic.AddUint64(&resTimesSum, resTime)
+				avg := resTimesSum / numRes
+				atomic.SwapUint64(&avgResTime, avg)
+
+				if resTime > maxResTime {
+					atomic.SwapUint64(&maxResTime, resTime)
+				}
+
+				if resTime < minResTime {
+					atomic.SwapUint64(&minResTime, resTime)
+				}
+
+				newStats := ResponseTimeStats{
+					AverageTime: avgResTime,
+					MaxTime:     maxResTime,
+					MinTime:     minResTime,
+				}
+
+				if !reflect.DeepEqual(stats, newStats) {
+					r.resStats <- newStats
+					stats = newStats
+				}
+			}
+		}
+	}(r.ctx)
+}
+
+func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan uint64, chan ResponseTimeStats, chan interface{}, chan uint64) {
 	r.getRequestSpec()
 
 	r.validateRequests()
@@ -198,8 +266,10 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan uint6
 
 	r.initCounters()
 
+	r.getResponseTimesStats()
+
 	for i := 0; i < r.config.NumClients; i++ {
-		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan, r.resTimes, r.errIn)
+		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan, r.resTimesIn, r.errIn)
 		client.start()
 	}
 
@@ -209,5 +279,5 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan uint6
 		close(r.done)
 	}()
 
-	return r.done, r.reqPS, r.resPS, r.resTimes, r.errOut, r.errCountChan
+	return r.done, r.reqPS, r.resPS, r.resTimesOut, r.resStats, r.errOut, r.errCountChan
 }
