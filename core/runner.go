@@ -45,7 +45,7 @@ func NewRunner(config Config, ticker *time.Ticker) *Runner {
 		errIn:        make(chan interface{}, config.NumClients),
 		errOut:       make(chan interface{}, config.NumClients),
 		errCountChan: make(chan uint64),
-		resTimes:     make(chan uint64),
+		resTimes:     make(chan uint64, config.NumClients),
 		reqPS:        make(chan uint64),
 		resPS:        make(chan uint64),
 		done:         make(chan struct{}),
