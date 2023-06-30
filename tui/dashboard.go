@@ -22,6 +22,7 @@ type Dashboard struct {
 	reqPS          chan uint64
 	resPS          chan uint64
 	errorStream    <-chan interface{}
+	errCountChan   chan uint64
 }
 
 type widgetPosition struct {
@@ -31,7 +32,7 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, errorStream <-chan interface{}) *Dashboard {
+func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, errorStream <-chan interface{}, errCountChan chan uint64) *Dashboard {
 	return &Dashboard{
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
@@ -41,6 +42,7 @@ func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS
 		reqPS:          reqPS,
 		resPS:          resPS,
 		errorStream:    errorStream,
+		errCountChan:   errCountChan,
 	}
 }
 
@@ -181,7 +183,7 @@ func (d *Dashboard) drawGauge(title string, pos widgetPosition) {
 	}()
 }
 
-func drawTable(title string, pos widgetPosition, avgResTime time.Duration, maxResTime time.Duration, minResTime time.Duration, errCount int64, plots *[]ui.Drawable) {
+func (d *Dashboard) drawTable(title string, pos widgetPosition) {
 	t := widgets.NewTable()
 	t.Title = title
 	t.Rows = [][]string{
@@ -192,10 +194,10 @@ func drawTable(title string, pos widgetPosition, avgResTime time.Duration, maxRe
 			"Error Count",
 		},
 		{
-			strconv.FormatInt(avgResTime.Milliseconds(), 10),
-			strconv.FormatInt(maxResTime.Milliseconds(), 10),
-			strconv.FormatInt(minResTime.Milliseconds(), 10),
-			strconv.FormatInt(errCount, 10),
+			"0",
+			"0",
+			"0",
+			"0",
 		},
 	}
 	t.RowSeparator = true
@@ -203,7 +205,23 @@ func drawTable(title string, pos widgetPosition, avgResTime time.Duration, maxRe
 	t.RowStyles[0] = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
 	t.TextAlignment = ui.AlignCenter
 
-	*plots = append(*plots, t)
+	*d.outputs = append(*d.outputs, t)
+
+	go func() {
+		for {
+			select {
+			case c, ok := <-d.errCountChan:
+				if !ok {
+					return
+				}
+				t.Rows[1][3] = strconv.FormatUint(c, 10)
+				select {
+				case d.refreshReqChan <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}()
 }
 
 func (d *Dashboard) drawLogs(title string, pos widgetPosition) {
@@ -304,13 +322,13 @@ func (d *Dashboard) DrawDashboard() {
 	}
 	d.drawLineGraph("Responses per second", resPSGraphPos, uint64ToFloat64Chan(d.resPS))
 
-	//resStatTablePos := widgetPosition{
-	//	x1: 0,
-	//	y1: GaugeHeight + GraphHeight,
-	//	x2: MaxWidth,
-	//	y2: GaugeHeight + GraphHeight + TableHeight,
-	//}
-	//drawTable("Response Stats", resStatTablePos, 14*time.Millisecond, 18*time.Millisecond, 10*time.Millisecond, 42, &outputs)
+	resStatTablePos := widgetPosition{
+		x1: 0,
+		y1: GaugeHeight + GraphHeight,
+		x2: MaxWidth,
+		y2: GaugeHeight + GraphHeight + TableHeight,
+	}
+	d.drawTable("Response Stats", resStatTablePos)
 
 	errorLogsPos := widgetPosition{
 		x1: 0,
