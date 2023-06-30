@@ -113,8 +113,11 @@ func (d *Dashboard) launchRefreshWorker() {
 }
 
 func (d *Dashboard) drawLineGraph(title string, pos widgetPosition, dataChan <-chan float64) {
+	const MarkingsBuffer = 7
+	lengthXAxis := pos.x2 - pos.x1 - MarkingsBuffer
+
 	dataArr := make([][]float64, 1)
-	dataArr[0] = make([]float64, pos.x2-pos.x1)
+	dataArr[0] = make([]float64, lengthXAxis)
 	var data []float64
 
 	p := widgets.NewPlot()
@@ -135,7 +138,7 @@ func (d *Dashboard) drawLineGraph(title string, pos widgetPosition, dataChan <-c
 					return
 				}
 				data = append(data, val)
-				if len(data) > pos.x2-pos.x1 {
+				if len(data) > lengthXAxis {
 					data = data[1:]
 				}
 				copy(dataArr[0][:], data)
