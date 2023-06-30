@@ -276,6 +276,20 @@ func (r *Runner) LoadTest() (chan struct{}, context.CancelFunc, chan uint64, cha
 	// wait for all the goroutines to exit
 	go func() {
 		r.wg.Wait()
+
+		// close data channels
+		close(r.reqCountChan)
+		close(r.resCountChan)
+		close(r.errIn)
+		close(r.errOut)
+		close(r.errCountChan)
+		close(r.resTimesIn)
+		close(r.resTimesOut)
+		close(r.resStats)
+		close(r.reqPS)
+		close(r.resPS)
+
+		// finally close main done channel
 		close(r.done)
 	}()
 
