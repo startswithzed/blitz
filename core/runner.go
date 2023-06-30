@@ -23,7 +23,8 @@ type Runner struct {
 	errorCount   uint64
 	reqCountChan chan struct{}
 	resCountChan chan struct{}
-	errorStream  chan interface{}
+	errIn        chan interface{}
+	errOut       chan interface{}
 	errCountChan chan uint64
 	reqPS        chan uint64
 	resPS        chan uint64
@@ -40,7 +41,8 @@ func NewRunner(config Config, ticker *time.Ticker) *Runner {
 		wg:           &sync.WaitGroup{},
 		reqCountChan: make(chan struct{}, config.NumClients),
 		resCountChan: make(chan struct{}, config.NumClients),
-		errorStream:  make(chan interface{}, config.NumClients),
+		errIn:        make(chan interface{}, config.NumClients),
+		errOut:       make(chan interface{}, config.NumClients),
 		errCountChan: make(chan uint64),
 		reqPS:        make(chan uint64),
 		resPS:        make(chan uint64),
@@ -147,12 +149,13 @@ func (r *Runner) initCounters() {
 			select {
 			case <-ctx.Done():
 				return
-			case _, ok := <-r.errorStream:
+			case err, ok := <-r.errIn:
 				if !ok {
 					return
 				}
 				atomic.AddUint64(&r.errorCount, 1)
 				r.errCountChan <- r.errorCount
+				r.errOut <- err
 			}
 		}
 	}(r.ctx)
@@ -194,7 +197,7 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan inter
 	r.initCounters()
 
 	for i := 0; i < r.config.NumClients; i++ {
-		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan, r.errorStream)
+		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan, r.errIn)
 		client.start()
 	}
 
@@ -204,5 +207,5 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan inter
 		close(r.done)
 	}()
 
-	return r.done, r.reqPS, r.resPS, r.errorStream, r.errCountChan
+	return r.done, r.reqPS, r.resPS, r.errOut, r.errCountChan
 }
