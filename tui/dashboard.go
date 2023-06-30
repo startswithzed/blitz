@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/startswithzed/web-ruckus/core"
 	"log"
-	"math/rand"
 	"strconv"
 	"sync"
 	"time"
@@ -21,6 +20,7 @@ type Dashboard struct {
 	refreshReqChan chan struct{}
 	reqPS          chan uint64
 	resPS          chan uint64
+	resTimes       chan uint64
 	errorStream    <-chan interface{}
 	errCountChan   chan uint64
 }
@@ -32,7 +32,7 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, errorStream <-chan interface{}, errCountChan chan uint64) *Dashboard {
+func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, resTimes chan uint64, errorStream <-chan interface{}, errCountChan chan uint64) *Dashboard {
 	return &Dashboard{
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
@@ -41,6 +41,7 @@ func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS
 		refreshReqChan: make(chan struct{}, 1), //TODO: close this channel gracefully
 		reqPS:          reqPS,
 		resPS:          resPS,
+		resTimes:       resTimes,
 		errorStream:    errorStream,
 		errCountChan:   errCountChan,
 	}
@@ -283,28 +284,13 @@ func (d *Dashboard) DrawDashboard() {
 
 	d.drawGauge("Test Duration", durationGaugePos)
 
-	ticker := time.NewTicker(200 * time.Millisecond)
-
-	resTimeChan := make(chan float64)
-	defer close(resTimeChan) // TODO: check for graceful exit
-
-	go func() {
-		rand.Seed(time.Now().UnixNano())
-		for {
-			select {
-			case <-ticker.C:
-				resTimeChan <- float64(rand.Intn(20))
-			}
-		}
-	}()
-
 	resTimeGraphPos := widgetPosition{
 		x1: 0,
 		y1: GaugeHeight,
 		x2: MaxWidth / 3,
 		y2: GaugeHeight + GraphHeight,
 	}
-	d.drawLineGraph("Responses times (ms)", resTimeGraphPos, resTimeChan)
+	d.drawLineGraph("Responses times (ms)", resTimeGraphPos, uint64ToFloat64Chan(d.resTimes))
 
 	reqPSGraphPos := widgetPosition{
 		x1: MaxWidth / 3,
