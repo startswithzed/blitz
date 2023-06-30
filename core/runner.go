@@ -24,6 +24,7 @@ type Runner struct {
 	reqCountChan chan struct{}
 	resCountChan chan struct{}
 	errorStream  chan interface{}
+	errCountChan chan uint64
 	reqPS        chan uint64
 	resPS        chan uint64
 	done         chan struct{}
@@ -40,6 +41,7 @@ func NewRunner(config Config, ticker *time.Ticker) *Runner {
 		reqCountChan: make(chan struct{}, config.NumClients),
 		resCountChan: make(chan struct{}, config.NumClients),
 		errorStream:  make(chan interface{}, config.NumClients),
+		errCountChan: make(chan uint64),
 		reqPS:        make(chan uint64),
 		resPS:        make(chan uint64),
 		done:         make(chan struct{}),
@@ -99,6 +101,7 @@ func (r *Runner) validateRequests() {
 func (r *Runner) initCounters() {
 	r.wg.Add(1)
 
+	// reqs counter
 	go func(ctx context.Context) {
 		defer r.wg.Done()
 
@@ -117,6 +120,7 @@ func (r *Runner) initCounters() {
 
 	r.wg.Add(1)
 
+	// res counter
 	go func(ctx context.Context) {
 		defer r.wg.Done()
 
@@ -129,6 +133,26 @@ func (r *Runner) initCounters() {
 					return
 				}
 				atomic.AddUint64(&r.resCount, 1)
+			}
+		}
+	}(r.ctx)
+
+	r.wg.Add(1)
+
+	// error counter
+	go func(ctx context.Context) {
+		defer r.wg.Done()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-r.errorStream:
+				if !ok {
+					return
+				}
+				atomic.AddUint64(&r.errorCount, 1)
+				r.errCountChan <- r.errorCount
 			}
 		}
 	}(r.ctx)
@@ -156,27 +180,7 @@ func (r *Runner) getRPS(ticker *time.Ticker) {
 	}(r.ctx)
 }
 
-func (r *Runner) countErrors() {
-	r.wg.Add(1)
-
-	go func(ctx context.Context) {
-		defer r.wg.Done()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case _, ok := <-r.errorStream:
-				if !ok {
-					return
-				}
-				atomic.AddUint64(&r.errorCount, 1)
-			}
-		}
-	}(r.ctx)
-}
-
-func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan interface{}) {
+func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan interface{}, chan uint64) {
 	r.getRequestSpec()
 
 	r.validateRequests()
@@ -200,5 +204,5 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan inter
 		close(r.done)
 	}()
 
-	return r.done, r.reqPS, r.resPS, r.errorStream
+	return r.done, r.reqPS, r.resPS, r.errorStream, r.errCountChan
 }

@@ -5,6 +5,7 @@ import (
 	"github.com/startswithzed/web-ruckus/core"
 	"log"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type Dashboard struct {
 	reqPS          chan uint64
 	resPS          chan uint64
 	errorStream    <-chan interface{}
+	errCountChan   chan uint64
 }
 
 type widgetPosition struct {
@@ -30,7 +32,7 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, errorStream <-chan interface{}) *Dashboard {
+func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, errorStream <-chan interface{}, errCountChan chan uint64) *Dashboard {
 	return &Dashboard{
 		testDuration:   testDuration,
 		durationTicker: durationTicker,
@@ -40,6 +42,7 @@ func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS
 		reqPS:          reqPS,
 		resPS:          resPS,
 		errorStream:    errorStream,
+		errCountChan:   errCountChan,
 	}
 }
 
@@ -203,6 +206,22 @@ func (d *Dashboard) drawTable(title string, pos widgetPosition) {
 	t.TextAlignment = ui.AlignCenter
 
 	*d.outputs = append(*d.outputs, t)
+
+	go func() {
+		for {
+			select {
+			case c, ok := <-d.errCountChan:
+				if !ok {
+					return
+				}
+				t.Rows[1][3] = strconv.FormatUint(c, 10)
+				select {
+				case d.refreshReqChan <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}()
 }
 
 func (d *Dashboard) drawLogs(title string, pos widgetPosition) {
