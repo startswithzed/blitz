@@ -26,6 +26,7 @@ type Runner struct {
 	errIn        chan interface{}
 	errOut       chan interface{}
 	errCountChan chan uint64
+	resTimes     chan uint64
 	reqPS        chan uint64
 	resPS        chan uint64
 	done         chan struct{}
@@ -44,6 +45,7 @@ func NewRunner(config Config, ticker *time.Ticker) *Runner {
 		errIn:        make(chan interface{}, config.NumClients),
 		errOut:       make(chan interface{}, config.NumClients),
 		errCountChan: make(chan uint64),
+		resTimes:     make(chan uint64, config.NumClients),
 		reqPS:        make(chan uint64),
 		resPS:        make(chan uint64),
 		done:         make(chan struct{}),
@@ -183,7 +185,7 @@ func (r *Runner) getRPS(ticker *time.Ticker) {
 	}(r.ctx)
 }
 
-func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan interface{}, chan uint64) {
+func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan uint64, chan interface{}, chan uint64) {
 	r.getRequestSpec()
 
 	r.validateRequests()
@@ -197,7 +199,7 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan inter
 	r.initCounters()
 
 	for i := 0; i < r.config.NumClients; i++ {
-		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan, r.errIn)
+		client := newClient(r.requests, r.ctx, r.wg, r.reqCountChan, r.resCountChan, r.resTimes, r.errIn)
 		client.start()
 	}
 
@@ -207,5 +209,5 @@ func (r *Runner) LoadTest() (chan struct{}, chan uint64, chan uint64, chan inter
 		close(r.done)
 	}()
 
-	return r.done, r.reqPS, r.resPS, r.errOut, r.errCountChan
+	return r.done, r.reqPS, r.resPS, r.resTimes, r.errOut, r.errCountChan
 }
