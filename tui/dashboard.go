@@ -63,10 +63,10 @@ func logsToString(logs []interface{}) string {
 	str := ""
 	for _, errLog := range logs {
 		switch l := errLog.(type) {
-		case core.ErrorLog:
+		case core.ResponseError:
 			str += fmt.Sprintf("%d  [%d](fg:red)  %s  [%s](fg:blue)\n", l.Timestamp, l.StatusCode, l.Verb, l.URL)
-		case error:
-			str += fmt.Sprintf("[%s](fg:red)\n", l)
+		case core.NetworkError:
+			str += fmt.Sprintf("%d  [%s](fg:red)\n", l.Timestamp, l.Error)
 		default:
 		}
 	}
@@ -262,7 +262,7 @@ func (d *Dashboard) drawLogs(title string, pos widgetPosition) {
 					return
 				}
 				switch l := val.(type) {
-				case core.ErrorLog, error:
+				case core.ResponseError, core.NetworkError:
 					logs = append(logs, l)
 					if len(logs) > 10 {
 						logs = logs[1:]
