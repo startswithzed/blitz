@@ -35,6 +35,7 @@ func createRootCmd() *cobra.Command {
 
 			dashboard := tui.NewDashboard(dc)
 			dashboard.DrawDashboard()
+			defer close(dashboard.RefreshReqChan)
 
 			log.Println("Shutting down load test...")
 

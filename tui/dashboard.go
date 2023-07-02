@@ -21,7 +21,7 @@ type Dashboard struct {
 	cancel         context.CancelFunc
 
 	// refresh channel
-	refreshReqChan chan struct{}
+	RefreshReqChan chan struct{}
 
 	// data channels
 	reqPS        <-chan uint64
@@ -58,7 +58,7 @@ func NewDashboard(dc DashboardConfig) *Dashboard {
 		outputs:        &[]ui.Drawable{},
 		uiMutex:        sync.Mutex{},
 		cancel:         dc.Cancel,
-		refreshReqChan: make(chan struct{}, 1),
+		RefreshReqChan: make(chan struct{}, 1),
 		reqPS:          dc.ReqPS,
 		resPS:          dc.ResPS,
 		resTimes:       dc.ResTimes,
@@ -121,7 +121,7 @@ func (d *Dashboard) launchRefreshWorker() {
 	go func() {
 		for {
 			select {
-			case _, ok := <-d.refreshReqChan:
+			case _, ok := <-d.RefreshReqChan:
 				if !ok {
 					return
 				}
@@ -161,7 +161,7 @@ func (d *Dashboard) drawLineGraph(title string, pos widgetPosition, dataChan <-c
 				}
 				copy(dataArr[0][:], data)
 				select {
-				case d.refreshReqChan <- struct{}{}:
+				case d.RefreshReqChan <- struct{}{}:
 				default:
 				}
 			}
@@ -202,7 +202,7 @@ func (d *Dashboard) drawGauge(title string, pos widgetPosition) {
 				g.Percent = percent
 				g.Label = fmt.Sprintf("%v%% %v/%v", g.Percent, formatDuration(elapsed), formatDuration(d.testDuration))
 				select {
-				case d.refreshReqChan <- struct{}{}:
+				case d.RefreshReqChan <- struct{}{}:
 				default:
 				}
 			}
@@ -243,7 +243,7 @@ func (d *Dashboard) drawTable(title string, pos widgetPosition) {
 				}
 				t.Rows[1][3] = strconv.FormatUint(c, 10)
 				select {
-				case d.refreshReqChan <- struct{}{}:
+				case d.RefreshReqChan <- struct{}{}:
 				default:
 				}
 			case stats, ok := <-d.resStats:
@@ -254,7 +254,7 @@ func (d *Dashboard) drawTable(title string, pos widgetPosition) {
 				t.Rows[1][1] = strconv.FormatUint(stats.MaxTime, 10)
 				t.Rows[1][2] = strconv.FormatUint(stats.MinTime, 10)
 				select {
-				case d.refreshReqChan <- struct{}{}:
+				case d.RefreshReqChan <- struct{}{}:
 				default:
 				}
 			default:
@@ -288,7 +288,7 @@ func (d *Dashboard) drawLogs(title string, pos widgetPosition) {
 					}
 					p.Text = logsToString(logs)
 					select {
-					case d.refreshReqChan <- struct{}{}:
+					case d.RefreshReqChan <- struct{}{}:
 					default:
 					}
 				default:
@@ -312,7 +312,6 @@ func (d *Dashboard) DrawDashboard() {
 	const LogsHeight = 12
 
 	d.launchRefreshWorker()
-	defer close(d.refreshReqChan)
 
 	durationGaugePos := widgetPosition{
 		x1: 0,
