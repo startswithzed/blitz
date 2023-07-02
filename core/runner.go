@@ -55,27 +55,23 @@ type ResponseTimeStats struct {
 
 func NewRunner(config Config, ticker *time.Ticker) *Runner {
 
-	// TODO: Check for closing of all channels
-
 	return &Runner{
 		config:       config,
 		ticker:       ticker,
 		wg:           &sync.WaitGroup{},
 		reqCountChan: make(chan struct{}, config.NumClients),
 		resCountChan: make(chan struct{}, config.NumClients),
+		ReqPS:        make(chan uint64),
+		ResPS:        make(chan uint64),
 		errIn:        make(chan interface{}, config.NumClients),
-		errOut:       make(chan interface{}, config.NumClients),
-		errCountChan: make(chan uint64),
+		ErrOut:       make(chan interface{}, config.NumClients),
+		ErrCountChan: make(chan uint64),
 		resTimesIn:   make(chan uint64, config.NumClients),
-		resTimesOut:  make(chan uint64, config.NumClients),
-		resStats:     make(chan ResponseTimeStats, config.NumClients),
-		reqPS:        make(chan uint64),
-		resPS:        make(chan uint64),
-		done:         make(chan struct{}),
+		ResTimesOut:  make(chan uint64, config.NumClients),
+		ResStats:     make(chan ResponseTimeStats, config.NumClients),
+		Done:         make(chan struct{}),
 	}
 }
-
-// TODO: Error handling logic should be extracted and left to the main function
 
 func (r *Runner) getRequestSpec() {
 	ext := filepath.Ext(r.config.ReqSpecPath)
@@ -179,8 +175,8 @@ func (r *Runner) initCounters() {
 					return
 				}
 				atomic.AddUint64(&r.errorCount, 1)
-				r.errCountChan <- r.errorCount
-				r.errOut <- err
+				r.ErrCountChan <- r.errorCount
+				r.ErrOut <- err
 			}
 		}
 	}(r.ctx)
@@ -200,9 +196,9 @@ func (r *Runner) getRPS(ticker *time.Ticker) {
 					return
 				}
 				reqC := atomic.SwapUint64(&r.reqCount, 0)
-				r.reqPS <- reqC
+				r.ReqPS <- reqC
 				resC := atomic.SwapUint64(&r.resCount, 0)
-				r.resPS <- resC
+				r.ResPS <- resC
 			}
 		}
 	}(r.ctx)
@@ -234,7 +230,7 @@ func (r *Runner) getResponseTimesStats() {
 					return
 				}
 
-				r.resTimesOut <- resTime
+				r.ResTimesOut <- resTime
 
 				atomic.AddUint64(&numRes, 1)
 				atomic.AddUint64(&resTimesSum, resTime)
@@ -256,7 +252,7 @@ func (r *Runner) getResponseTimesStats() {
 				}
 
 				if !reflect.DeepEqual(stats, newStats) {
-					r.resStats <- newStats
+					r.ResStats <- newStats
 					stats = newStats
 				}
 			}
@@ -264,7 +260,7 @@ func (r *Runner) getResponseTimesStats() {
 	}(r.ctx)
 }
 
-func (r *Runner) LoadTest() (chan struct{}, context.CancelFunc, chan uint64, chan uint64, chan uint64, chan ResponseTimeStats, chan interface{}, chan uint64) {
+func (r *Runner) LoadTest() {
 	r.getRequestSpec()
 
 	r.validateRequests()
@@ -272,6 +268,7 @@ func (r *Runner) LoadTest() (chan struct{}, context.CancelFunc, chan uint64, cha
 	duration := r.config.Duration
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	r.ctx = ctx
+	r.Cancel = cancel
 
 	r.getRPS(r.ticker)
 
@@ -292,17 +289,15 @@ func (r *Runner) LoadTest() (chan struct{}, context.CancelFunc, chan uint64, cha
 		close(r.reqCountChan)
 		close(r.resCountChan)
 		close(r.errIn)
-		close(r.errOut)
-		close(r.errCountChan)
+		close(r.ErrOut)
+		close(r.ErrCountChan)
 		close(r.resTimesIn)
-		close(r.resTimesOut)
-		close(r.resStats)
-		close(r.reqPS)
-		close(r.resPS)
+		close(r.ResTimesOut)
+		close(r.ResStats)
+		close(r.ReqPS)
+		close(r.ResPS)
 
 		// finally close main done channel
-		close(r.done)
+		close(r.Done)
 	}()
-
-	return r.done, cancel, r.reqPS, r.resPS, r.resTimesOut, r.resStats, r.errOut, r.errCountChan
 }
