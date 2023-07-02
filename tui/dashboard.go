@@ -41,7 +41,7 @@ func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS
 		durationTicker: durationTicker,
 		outputs:        &[]ui.Drawable{},
 		uiMutex:        sync.Mutex{},
-		refreshReqChan: make(chan struct{}, 1), //TODO: close this channel gracefully
+		refreshReqChan: make(chan struct{}, 1),
 		reqPS:          reqPS,
 		resPS:          resPS,
 		resTimes:       resTimes,
@@ -349,6 +349,7 @@ func (d *Dashboard) DrawDashboard() {
 		switch e.ID {
 		case "q", "<C-c>":
 			d.cancel()
+			close(d.refreshReqChan)
 			return
 		}
 	}
