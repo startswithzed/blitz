@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/startswithzed/web-ruckus/core"
 	"github.com/startswithzed/web-ruckus/tui"
+	"log"
 	"time"
 )
 
@@ -16,7 +17,6 @@ func createRootCmd() *cobra.Command {
 		Long: "Load test your web server.",
 		Run: func(cmd *cobra.Command, args []string) {
 			ticker := time.NewTicker(time.Second)
-			defer ticker.Stop()
 
 			runner := core.NewRunner(config, ticker)
 			runner.LoadTest()
@@ -35,6 +35,8 @@ func createRootCmd() *cobra.Command {
 
 			dashboard := tui.NewDashboard(dc)
 			dashboard.DrawDashboard()
+
+			log.Println("Shutting down load test...")
 
 			<-runner.Done // wait for the done channel to close before exiting the program
 		},

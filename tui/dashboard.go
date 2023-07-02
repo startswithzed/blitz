@@ -186,7 +186,10 @@ func (d *Dashboard) drawGauge(title string, pos widgetPosition) {
 		percent := 0
 		for {
 			select {
-			case now := <-d.durationTicker.C:
+			case now, ok := <-d.durationTicker.C:
+				if !ok {
+					return
+				}
 				elapsed := now.Sub(startTime)
 				remaining := endTime.Sub(now)
 
@@ -309,6 +312,7 @@ func (d *Dashboard) DrawDashboard() {
 	const LogsHeight = 12
 
 	d.launchRefreshWorker()
+	defer close(d.refreshReqChan)
 
 	durationGaugePos := widgetPosition{
 		x1: 0,
@@ -365,7 +369,7 @@ func (d *Dashboard) DrawDashboard() {
 		switch e.ID {
 		case "q", "<C-c>":
 			d.cancel()
-			close(d.refreshReqChan)
+			d.durationTicker.Stop()
 			return
 		}
 	}
