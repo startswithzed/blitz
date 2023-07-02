@@ -18,14 +18,18 @@ type Dashboard struct {
 	durationTicker *time.Ticker
 	outputs        *[]ui.Drawable
 	uiMutex        sync.Mutex
-	refreshReqChan chan struct{}
-	reqPS          chan uint64
-	resPS          chan uint64
-	resTimes       chan uint64
-	resStats       chan core.ResponseTimeStats
-	errorStream    <-chan interface{}
-	errCountChan   chan uint64
 	cancel         context.CancelFunc
+
+	// refresh channel
+	refreshReqChan chan struct{}
+
+	// data channels
+	reqPS        <-chan uint64
+	resPS        <-chan uint64
+	resTimes     <-chan uint64
+	resStats     <-chan core.ResponseTimeStats
+	errorStream  <-chan interface{}
+	errCountChan <-chan uint64
 }
 
 type widgetPosition struct {
@@ -35,20 +39,32 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, resTimes chan uint64, resStats chan core.ResponseTimeStats, errorStream <-chan interface{}, errCountChan chan uint64, cancel context.CancelFunc) *Dashboard {
+type DashboardConfig struct {
+	Duration    time.Duration
+	Ticker      *time.Ticker
+	Cancel      context.CancelFunc
+	ReqPS       <-chan uint64
+	ResPS       <-chan uint64
+	ResTimes    <-chan uint64
+	ResStats    <-chan core.ResponseTimeStats
+	ErrorStream <-chan interface{}
+	ErrorCount  <-chan uint64
+}
+
+func NewDashboard(dc DashboardConfig) *Dashboard {
 	return &Dashboard{
-		testDuration:   testDuration,
-		durationTicker: durationTicker,
+		testDuration:   dc.Duration,
+		durationTicker: dc.Ticker,
 		outputs:        &[]ui.Drawable{},
 		uiMutex:        sync.Mutex{},
+		cancel:         dc.Cancel,
 		refreshReqChan: make(chan struct{}, 1),
-		reqPS:          reqPS,
-		resPS:          resPS,
-		resTimes:       resTimes,
-		resStats:       resStats,
-		errorStream:    errorStream,
-		errCountChan:   errCountChan,
-		cancel:         cancel,
+		reqPS:          dc.ReqPS,
+		resPS:          dc.ResPS,
+		resTimes:       dc.ResTimes,
+		resStats:       dc.ResStats,
+		errorStream:    dc.ErrorStream,
+		errCountChan:   dc.ErrorCount,
 	}
 }
 

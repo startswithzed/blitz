@@ -19,12 +19,24 @@ func createRootCmd() *cobra.Command {
 			defer ticker.Stop()
 
 			runner := core.NewRunner(config, ticker)
-			done, cancel, reqPS, resPS, resTimes, resStats, errStream, errCountChan := runner.LoadTest()
+			runner.LoadTest()
 
-			dashboard := tui.NewDashboard(config.Duration, ticker, reqPS, resPS, resTimes, resStats, errStream, errCountChan, cancel)
+			dc := tui.DashboardConfig{
+				Duration:    config.Duration,
+				Ticker:      ticker,
+				Cancel:      runner.Cancel,
+				ReqPS:       runner.ReqPS,
+				ResPS:       runner.ResPS,
+				ResTimes:    runner.ResTimesOut,
+				ResStats:    runner.ResStats,
+				ErrorStream: runner.ErrOut,
+				ErrorCount:  runner.ErrCountChan,
+			}
+
+			dashboard := tui.NewDashboard(dc)
 			dashboard.DrawDashboard()
 
-			<-done // wait for the done channel to close before exiting the program
+			<-runner.Done // wait for the done channel to close before exiting the program
 		},
 	}
 
