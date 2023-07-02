@@ -15,25 +15,36 @@ import (
 )
 
 type Runner struct {
-	config       Config
-	ticker       *time.Ticker
-	requests     []*Request
-	ctx          context.Context
-	wg           *sync.WaitGroup
+	config   Config
+	ticker   *time.Ticker
+	requests []*Request
+
+	// concurrency sync
+	ctx    context.Context
+	Cancel context.CancelFunc
+	wg     *sync.WaitGroup
+
+	// request stats
 	reqCount     uint64
 	resCount     uint64
-	errorCount   uint64
 	reqCountChan chan struct{}
 	resCountChan chan struct{}
+	ReqPS        chan uint64
+	ResPS        chan uint64
+
+	// error stats
+	errorCount   uint64
 	errIn        chan interface{}
-	errOut       chan interface{}
-	errCountChan chan uint64
-	resTimesIn   chan uint64
-	resTimesOut  chan uint64
-	resStats     chan ResponseTimeStats
-	reqPS        chan uint64
-	resPS        chan uint64
-	done         chan struct{}
+	ErrOut       chan interface{}
+	ErrCountChan chan uint64
+
+	// response time stats
+	resTimesIn  chan uint64
+	ResTimesOut chan uint64
+	ResStats    chan ResponseTimeStats
+
+	// shutdown signal
+	Done chan struct{}
 }
 
 type ResponseTimeStats struct {
