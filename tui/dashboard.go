@@ -18,14 +18,18 @@ type Dashboard struct {
 	durationTicker *time.Ticker
 	outputs        *[]ui.Drawable
 	uiMutex        sync.Mutex
-	refreshReqChan chan struct{}
-	reqPS          chan uint64
-	resPS          chan uint64
-	resTimes       chan uint64
-	resStats       chan core.ResponseTimeStats
-	errorStream    <-chan interface{}
-	errCountChan   chan uint64
 	cancel         context.CancelFunc
+
+	// refresh channel
+	refreshReqChan chan struct{}
+
+	// data channels
+	reqPS        <-chan uint64
+	resPS        <-chan uint64
+	resTimes     <-chan uint64
+	resStats     <-chan core.ResponseTimeStats
+	errorStream  <-chan interface{}
+	errCountChan <-chan uint64
 }
 
 type widgetPosition struct {
@@ -35,20 +39,32 @@ type widgetPosition struct {
 	y2 int
 }
 
-func NewDashboard(testDuration time.Duration, durationTicker *time.Ticker, reqPS chan uint64, resPS chan uint64, resTimes chan uint64, resStats chan core.ResponseTimeStats, errorStream <-chan interface{}, errCountChan chan uint64, cancel context.CancelFunc) *Dashboard {
+type DashboardConfig struct {
+	Duration    time.Duration
+	Ticker      *time.Ticker
+	Cancel      context.CancelFunc
+	ReqPS       <-chan uint64
+	ResPS       <-chan uint64
+	ResTimes    <-chan uint64
+	ResStats    <-chan core.ResponseTimeStats
+	ErrorStream <-chan interface{}
+	ErrorCount  <-chan uint64
+}
+
+func NewDashboard(dc DashboardConfig) *Dashboard {
 	return &Dashboard{
-		testDuration:   testDuration,
-		durationTicker: durationTicker,
+		testDuration:   dc.Duration,
+		durationTicker: dc.Ticker,
 		outputs:        &[]ui.Drawable{},
 		uiMutex:        sync.Mutex{},
-		refreshReqChan: make(chan struct{}, 1), //TODO: close this channel gracefully
-		reqPS:          reqPS,
-		resPS:          resPS,
-		resTimes:       resTimes,
-		resStats:       resStats,
-		errorStream:    errorStream,
-		errCountChan:   errCountChan,
-		cancel:         cancel,
+		cancel:         dc.Cancel,
+		refreshReqChan: make(chan struct{}, 1),
+		reqPS:          dc.ReqPS,
+		resPS:          dc.ResPS,
+		resTimes:       dc.ResTimes,
+		resStats:       dc.ResStats,
+		errorStream:    dc.ErrorStream,
+		errCountChan:   dc.ErrorCount,
 	}
 }
 
@@ -63,10 +79,10 @@ func logsToString(logs []interface{}) string {
 	str := ""
 	for _, errLog := range logs {
 		switch l := errLog.(type) {
-		case core.ErrorLog:
+		case core.ResponseError:
 			str += fmt.Sprintf("%d  [%d](fg:red)  %s  [%s](fg:blue)\n", l.Timestamp, l.StatusCode, l.Verb, l.URL)
-		case error:
-			str += fmt.Sprintf("[%s](fg:red)\n", l)
+		case core.NetworkError:
+			str += fmt.Sprintf("%d  [%s](fg:red)\n", l.Timestamp, l.Error)
 		default:
 		}
 	}
@@ -262,7 +278,7 @@ func (d *Dashboard) drawLogs(title string, pos widgetPosition) {
 					return
 				}
 				switch l := val.(type) {
-				case core.ErrorLog, error:
+				case core.ResponseError, core.NetworkError:
 					logs = append(logs, l)
 					if len(logs) > 10 {
 						logs = logs[1:]
@@ -349,6 +365,7 @@ func (d *Dashboard) DrawDashboard() {
 		switch e.ID {
 		case "q", "<C-c>":
 			d.cancel()
+			close(d.refreshReqChan)
 			return
 		}
 	}

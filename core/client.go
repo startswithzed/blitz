@@ -85,14 +85,14 @@ func (c *client) sendRequest(request *Request) (Response, error) {
 	}
 
 	if err != nil {
-		return Response{}, err
+		return Response{Timestamp: startTime.UnixNano()}, err
 	}
 
 	startTime = time.Now()
 	c.reqCountChan <- struct{}{}
 	resp, err = client.Do(req)
 	if err != nil {
-		return Response{}, err
+		return Response{Timestamp: startTime.UnixNano()}, err
 	}
 
 	responseTime := time.Since(startTime)
@@ -121,12 +121,15 @@ func (c *client) start() {
 
 				resp, err := c.sendRequest(request)
 				if err != nil {
-					c.errorStream <- err
+					c.errorStream <- NetworkError{
+						Timestamp: resp.Timestamp,
+						Error:     err,
+					}
 					continue
 				}
 
 				if resp.StatusCode >= 300 || resp.StatusCode < 200 {
-					c.errorStream <- ErrorLog{
+					c.errorStream <- ResponseError{
 						Timestamp:  resp.Timestamp,
 						Verb:       request.Verb,
 						URL:        request.URL,
