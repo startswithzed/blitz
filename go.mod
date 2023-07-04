@@ -1,4 +1,4 @@
-module github.com/startswithzed/web-ruckus
+module github.com/startswithzed/blitz
 
 go 1.19
 

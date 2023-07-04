@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/startswithzed/web-ruckus/cmd"
+	"github.com/startswithzed/blitz/cmd"
 	"log"
 )
 

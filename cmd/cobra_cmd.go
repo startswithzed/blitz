@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/startswithzed/web-ruckus/core"
-	"github.com/startswithzed/web-ruckus/tui"
+	"github.com/startswithzed/blitz/core"
+	"github.com/startswithzed/blitz/tui"
 	"log"
 	"time"
 )

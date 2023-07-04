@@ -3,7 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
-	"github.com/startswithzed/web-ruckus/core"
+	"github.com/startswithzed/blitz/core"
 	"log"
 	"strconv"
 	"sync"
