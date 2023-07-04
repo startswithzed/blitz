@@ -116,7 +116,8 @@ func (r *Runner) validateRequests() {
 		}
 	}
 
-	log.Printf("INFO:  total requests: %d\t valid requests: %d\n", len(r.requests), len(validRequests))
+	log.Printf("total requests 🔢: %d\n", len(r.requests))
+	log.Printf("valid requests ✅: %d\n", len(validRequests))
 
 	r.requests = validRequests
 }
@@ -264,6 +265,8 @@ func (r *Runner) LoadTest() {
 	r.getRequestSpec()
 
 	r.validateRequests()
+
+	log.Println("starting load test 🏁")
 
 	duration := r.config.Duration
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
